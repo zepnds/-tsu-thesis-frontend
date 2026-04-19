@@ -1,46 +1,49 @@
 # syntax=docker/dockerfile:1
 
-# ---------- Builder stage ----------
+# --- Stage 1: Build Stage ---
 FROM node:20-alpine AS builder
+
+# Set working directory
 WORKDIR /app
 
-# Install dependencies (package.json & package-lock if present)
+# Install dependencies (package-lock.json is preferred if it exists)
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --quiet
 
-# Copy source files
+# Copy the rest of the application code
 COPY . .
 
-# Backend API URL – can be overridden at build time
-ARG VITE_API_URL=https://tsu-thesis-backend.onrender.com
-ENV VITE_API_URL=${VITE_API_URL}
-# Additional environment variables for the frontend
+# Build Arguments for Environment Variables
+# These are baked into the frontend build at this stage
 ARG VITE_API_BASE_URL=https://tsu-thesis-backend.onrender.com/api
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
-ARG VITE_API_BASE_URL_IMAGE=https://tsu-thesis-backend.onrender.com/api
-ENV VITE_API_BASE_URL_IMAGE=${VITE_API_BASE_URL_IMAGE}
+ARG VITE_API_BASE_URL_IMAGE=https://tsu-thesis-backend.onrender.com
 ARG VITE_EMAILJS_SERVICE_ID=service_ov1yoke
-ENV VITE_EMAILJS_SERVICE_ID=${VITE_EMAILJS_SERVICE_ID}
 ARG VITE_EMAILJS_TEMPLATE_ID=template_cditbww
-ENV VITE_EMAILJS_TEMPLATE_ID=${VITE_EMAILJS_TEMPLATE_ID}
 ARG VITE_EMAILJS_PUBLIC_KEY=2XT5Idrp-WO-7P5AX
-ENV VITE_EMAILJS_PUBLIC_KEY=${VITE_EMAILJS_PUBLIC_KEY}
 ARG VITE_GOOGLE_MAPS_API_KEY=AIzaSyBmf6xg-j_P_vGeVwYrb6wYOqzOfzIrm2A
-ENV VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
 
-# Build the production bundle
+# Set them as ENV so the 'npm run build' command sees them
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_API_BASE_URL_IMAGE=$VITE_API_BASE_URL_IMAGE
+ENV VITE_EMAILJS_SERVICE_ID=$VITE_EMAILJS_SERVICE_ID
+ENV VITE_EMAILJS_TEMPLATE_ID=$VITE_EMAILJS_TEMPLATE_ID
+ENV VITE_EMAILJS_PUBLIC_KEY=$VITE_EMAILJS_PUBLIC_KEY
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
+
+# Perform the production build
 RUN npm run build
 
-# ---------- Production stage (nginx) ----------
+# --- Stage 2: Serving Stage ---
 FROM nginx:alpine
 
-# Copy built assets
+# Copy the build output from the builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Optional custom Nginx configuration (if you have nginx.conf in the project root)
+# Copy the custom nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Expose port 80
 EXPOSE 80
 
-# Run nginx in the foreground
-CMD ["nginx", "-g", "daemon off;" ]
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
