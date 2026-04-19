@@ -2,8 +2,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { postLogin } from "./js/login";
-import { postSignup } from "./js/signup";
-import emailjs from "@emailjs/browser";
+import { postSignup, postSendOtp } from "./js/signup";
 
 import { ENV } from "../../config/env";
 
@@ -28,11 +27,6 @@ import {
 } from "../../components/ui/dialog";
 import { Alert, AlertDescription } from "../../components/ui/alert";
 
-// --- env
-const SERVICE_ID = ENV.EMAILJS_SERVICE_ID;
-const TEMPLATE_ID = ENV.EMAILJS_TEMPLATE_ID;
-const PUBLIC_KEY = ENV.EMAILJS_PUBLIC_KEY;
-
 export default function Login() {
   const nav = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
@@ -54,19 +48,7 @@ export default function Login() {
   // OTP state
   const [otpDialogOpen, setOtpDialogOpen] = useState(false);
   const [otpInput, setOtpInput] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [otpExpiresAt, setOtpExpiresAt] = useState(0);
   const [sendingOtp, setSendingOtp] = useState(false);
-
-  // countdown display for OTP
-  const msLeft = Math.max(0, otpExpiresAt - Date.now());
-  const secsLeft = Math.ceil(msLeft / 1000);
-  const canResend = msLeft <= 0;
-
-  useEffect(() => {
-    // Only init EmailJS if key exists
-    if (PUBLIC_KEY) emailjs.init(PUBLIC_KEY);
-  }, []);
 
   const onChange = (e) => {
     setMsg({ type: "", text: "" });
@@ -88,44 +70,12 @@ export default function Login() {
     });
   };
 
-  function generateOtp() {
-    // 6-digit numeric
-    return String(Math.floor(100000 + Math.random() * 900000));
-  }
-
-  function niceTime(ts) {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-
-  async function sendOtpEmail(toEmail) {
-    if (!PUBLIC_KEY || !SERVICE_ID || !TEMPLATE_ID) {
-      setMsg({
-        type: "error",
-        text:
-          "Email verification is not configured (missing EmailJS env vars). Please contact the administrator.",
-      });
-      return;
-    }
-
-    const code = generateOtp();
-    const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
-
+  async function sendOtpEmail(toEmail, toUsername) {
     setSendingOtp(true);
+    setMsg({ type: "", text: "" });
     try {
-      await emailjs.send(
-        SERVICE_ID,
-        TEMPLATE_ID,
-        {
-          email: toEmail,
-          passcode: code,
-          time: niceTime(expires),
-        },
-        { publicKey: PUBLIC_KEY }
-      );
+      await postSendOtp({ email: toEmail, username: toUsername });
 
-      setOtpCode(code);
-      setOtpExpiresAt(expires);
       setOtpInput("");
       setOtpDialogOpen(true);
       setMsg({
@@ -136,7 +86,6 @@ export default function Login() {
       setMsg({
         type: "error",
         text:
-          err?.text ||
           err?.message ||
           "Could not send verification email. Please try again.",
       });
@@ -181,7 +130,7 @@ export default function Login() {
           return;
         }
 
-        await sendOtpEmail(formData.email.trim());
+        await sendOtpEmail(formData.email.trim(), formData.username.trim());
       }
     } catch (err) {
       setMsg({ type: "error", text: err?.message || "Something went wrong." });
@@ -191,16 +140,8 @@ export default function Login() {
   }
 
   async function verifyAndCreate() {
-    if (!otpCode) {
-      setMsg({ type: "error", text: "No OTP generated. Please resend." });
-      return;
-    }
-    if (Date.now() > otpExpiresAt) {
-      setMsg({ type: "error", text: "The code has expired. Please resend." });
-      return;
-    }
-    if (otpInput.trim() !== otpCode) {
-      setMsg({ type: "error", text: "Incorrect code. Please try again." });
+    if (!otpInput.trim()) {
+      setMsg({ type: "error", text: "Please enter the OTP." });
       return;
     }
 
@@ -214,6 +155,7 @@ export default function Login() {
         last_name: formData.last_name.trim(),
         phone: formData.phone.trim(),
         address: null,
+        otp: otpInput.trim(),
       });
 
       if (token) {
@@ -242,7 +184,7 @@ export default function Login() {
 
   async function resendOtp() {
     if (!formData.email) return;
-    await sendOtpEmail(formData.email.trim());
+    await sendOtpEmail(formData.email.trim(), formData.username.trim());
   }
 
   return (
@@ -459,9 +401,7 @@ export default function Login() {
               placeholder="123456"
             />
             <p className="text-xs text-slate-500">
-              {canResend
-                ? "Code expired."
-                : `Code expires in ${secsLeft}s (valid until ${niceTime(otpExpiresAt)}).`}
+              Code expires in 10 minutes. Check your spam folder if you don't see it.
             </p>
           </div>
 

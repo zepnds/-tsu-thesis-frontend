@@ -156,44 +156,50 @@ function statusBadgeProps(statusRaw) {
 }
 
 function normalizePlotRow(r) {
-  const status = r?.status ?? r?.plot_status ?? r?.plotStatus ?? null;
+  if (!r) return null;
+
+  // Handle nested structure { plot, grave } from admin/plot/:id
+  const data = (r.plot || r.grave) ? { ...r.plot, ...r.grave } : r;
+
+  const status = data?.status ?? data?.plot_status ?? data?.plotStatus ?? null;
 
   const person_full_name =
-    r?.person_full_name ??
-    r?.personFullName ??
-    r?.deceased_name ??
-    r?.deceasedName ??
+    data?.deceased_name ??
+    data?.person_full_name ??
+    data?.personFullName ??
+    data?.deceasedName ??
     null;
 
   const date_of_birth =
-    r?.date_of_birth ?? r?.dateOfBirth ?? r?.birth_date ?? r?.birthDate ?? null;
+    data?.date_of_birth ?? data?.dateOfBirth ?? data?.birth_date ?? data?.birthDate ?? null;
 
   const date_of_death =
-    r?.date_of_death ?? r?.dateOfDeath ?? r?.death_date ?? r?.deathDate ?? null;
+    data?.date_of_death ?? data?.dateOfDeath ?? data?.death_date ?? data?.deathDate ?? null;
 
-  const id = r?.id ?? r?.plot_id ?? r?.plotId ?? null;
-  const uid = r?.uid ?? r?.plot_uid ?? r?.plotUid ?? null;
+  // Ensure id refers to the plot ID for endpoint compatibility
+  const id = data?.plot_id ?? data?.id ?? null;
+  const uid = data?.uid ?? data?.plot_uid ?? data?.plotUid ?? null;
 
   const plot_name =
-    r?.plot_name ??
-    r?.plotName ??
-    r?.plot_code ??
-    r?.plotCode ??
-    r?.name ??
+    data?.plot_name ??
+    data?.plotName ??
+    data?.plot_code ??
+    data?.plotCode ??
+    data?.name ??
     null;
 
-  const plot_code = r?.plot_code ?? r?.plotCode ?? null;
+  const plot_code = data?.plot_code ?? data?.plotCode ?? null;
 
   const qr_token =
-    r?.qr_token ??
-    r?.qrToken ??
-    r?.qr ??
-    r?.qr_value ??
-    r?.qrValue ??
+    data?.qr_token ??
+    data?.qrToken ??
+    data?.qr ??
+    data?.qr_value ??
+    data?.qrValue ??
     null;
 
   return {
-    ...r,
+    ...data,
     id,
     uid,
     status,
@@ -448,7 +454,8 @@ export default function BurialRecords() {
 
   const openDetails = useCallback(
     async (row) => {
-      const idOrUid = row?.id ?? row?.uid;
+
+      const idOrUid = row?.plot_id
       if (!idOrUid) return;
 
       setOpen(true);
@@ -712,21 +719,7 @@ export default function BurialRecords() {
             </div>
 
             <div className="flex flex-wrap items-end gap-3 justify-between lg:justify-end">
-              <div className="min-w-[180px]">
-                <Label className="text-xs text-slate-500">Show</Label>
-                <Select
-                  value={deceasedOnly ? "deceased" : "all"}
-                  onValueChange={(v) => setDeceasedOnly(v === "deceased")}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="deceased">Deceased only</SelectItem>
-                    <SelectItem value="all">All plots</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
 
               <div className="min-w-[180px]">
                 <Label className="text-xs text-slate-500">Status</Label>

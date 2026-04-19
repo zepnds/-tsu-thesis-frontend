@@ -34,6 +34,40 @@ async function safeRead(res) {
   }
 }
 
+export async function postSendOtp({ email, username }) {
+  const BASE = cleanBase(import.meta.env.VITE_API_BASE_URL);
+  if (!BASE) throw new Error("Missing VITE_API_BASE_URL in frontend/.env");
+
+  const url = `${BASE}/auth/send-registration-otp`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ email, username }),
+    });
+
+    const data = await safeRead(res);
+
+    if (!res.ok) {
+      const msg =
+        (data && typeof data === "object" && (data.error || data.message)) ||
+        (typeof data === "string" && data) ||
+        `Failed to send OTP (${res.status})`;
+      throw new Error(msg);
+    }
+    return data;
+  } catch (err) {
+    const msg = err?.message || String(err);
+    const e = new Error(`OTP request failed: ${msg}`);
+    e.cause = err;
+    throw e;
+  }
+}
+
 export async function postSignup({
   username,
   email,
@@ -42,6 +76,7 @@ export async function postSignup({
   last_name,
   phone,
   address,
+  otp,
 }) {
   const BASE = cleanBase(import.meta.env.VITE_API_BASE_URL);
   if (!BASE) throw new Error("Missing VITE_API_BASE_URL in frontend/.env");
@@ -64,6 +99,7 @@ export async function postSignup({
         last_name,
         phone: phone || null,
         address: address || null,
+        otp,
       }),
     });
 
