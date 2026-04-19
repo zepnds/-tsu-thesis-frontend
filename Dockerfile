@@ -16,7 +16,7 @@ COPY . .
 # Build Arguments for Environment Variables
 # These are baked into the frontend build at this stage
 ARG VITE_API_BASE_URL=https://tsu-thesis-backend.onrender.com/api
-ARG VITE_API_BASE_URL_IMAGE=https://tsu-thesis-backend.onrender.com
+ARG VITE_API_BASE_URL_IMAGE=https://tsu-thesis-backend.onrender.com/api
 ARG VITE_EMAILJS_SERVICE_ID=service_ov1yoke
 ARG VITE_EMAILJS_TEMPLATE_ID=template_cditbww
 ARG VITE_EMAILJS_PUBLIC_KEY=2XT5Idrp-WO-7P5AX
