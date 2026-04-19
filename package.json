@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start:prod": "cross-env VITE_API_URL=https://tsu-thesis-backend.onrender.com/ vite preview",
+    "start:prod": "cross-env VITE_API_URL=https://tsu-thesis-backend.onrender.com vite preview",
     "lint": "eslint .",
     "preview": "vite preview"
   },
