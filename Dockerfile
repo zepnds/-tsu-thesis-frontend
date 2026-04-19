@@ -6,7 +6,7 @@ FROM node:20-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Install dependencies (package-lock.json is preferred if it exists)
+# Install dependencies
 COPY package*.json ./
 RUN npm ci --quiet
 
@@ -14,15 +14,15 @@ RUN npm ci --quiet
 COPY . .
 
 # Build Arguments for Environment Variables
-# These are baked into the frontend build at this stage
-ARG VITE_API_BASE_URL=https://tsu-thesis-backend.onrender.com/api
-ARG VITE_API_BASE_URL_IMAGE=https://tsu-thesis-backend.onrender.com/api
+# Using relative paths (/api) ensures we satisfy CSP and use the Nginx proxy
+ARG VITE_API_BASE_URL=/api
+ARG VITE_API_BASE_URL_IMAGE=/api
 ARG VITE_EMAILJS_SERVICE_ID=service_ov1yoke
 ARG VITE_EMAILJS_TEMPLATE_ID=template_cditbww
 ARG VITE_EMAILJS_PUBLIC_KEY=2XT5Idrp-WO-7P5AX
 ARG VITE_GOOGLE_MAPS_API_KEY=AIzaSyBmf6xg-j_P_vGeVwYrb6wYOqzOfzIrm2A
 
-# Set them as ENV so the 'npm run build' command sees them
+# Set them as ENV
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_API_BASE_URL_IMAGE=$VITE_API_BASE_URL_IMAGE
 ENV VITE_EMAILJS_SERVICE_ID=$VITE_EMAILJS_SERVICE_ID
