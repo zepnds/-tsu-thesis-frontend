@@ -15,9 +15,9 @@ COPY . .
 ARG VITE_API_URL=https://tsu-thesis-backend.onrender.com
 ENV VITE_API_URL=${VITE_API_URL}
 # Additional environment variables for the frontend
-ARG VITE_API_BASE_URL=/api
+ARG VITE_API_BASE_URL=https://tsu-thesis-backend.onrender.com/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
-ARG VITE_API_BASE_URL_IMAGE=/api
+ARG VITE_API_BASE_URL_IMAGE=https://tsu-thesis-backend.onrender.com/api
 ENV VITE_API_BASE_URL_IMAGE=${VITE_API_BASE_URL_IMAGE}
 ARG VITE_EMAILJS_SERVICE_ID=service_ov1yoke
 ENV VITE_EMAILJS_SERVICE_ID=${VITE_EMAILJS_SERVICE_ID}
