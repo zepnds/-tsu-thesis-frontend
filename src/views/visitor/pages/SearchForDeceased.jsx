@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import fetchBurialRecords from "../js/get-burial-records";
 import { buildGraph, buildRoutedPolyline, fmtDistance } from "../js/dijkstra-pathfinding";
+import jsQR from "jsqr";
 
 import CemeteryMap, { CEMETERY_CENTER, INITIAL_ROAD_SEGMENTS } from "../../../components/map/CemeteryMap";
 
@@ -70,7 +71,7 @@ function cameraErrToMessage(err) {
     return "Camera permission denied. Please allow camera access in your browser site settings.";
   if (name === "NotFoundError") return "No camera found on this device.";
   if (name === "NotReadableError")
-    return "Camera is already in use by another app (example Messenger, Zoom, Camera). Close it and try again.";
+    return "Camera is already in use by another app or tab. Please close other apps (Messenger, Zoom, Teams) or refresh this page and try again.";
   if (name === "SecurityError") return "Camera access requires HTTPS (or localhost).";
   return err?.message || "Unable to access camera.";
 }
@@ -640,6 +641,8 @@ export default function SearchForDeceased() {
   const rafRef = useRef(0);
   const fileRef = useRef(null);
   const canvasRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const isOpeningRef = useRef(false);
 
   // map instance for UX controls
   const mapRef = useRef(null);
@@ -1195,121 +1198,193 @@ export default function SearchForDeceased() {
 
     setScanErr("");
     setScanMode("camera");
+    setScanModalOpen(true);
 
     if (!isSecureForDeviceAPIs()) {
-      setScanModalOpen(true);
       setScanErr("Camera is blocked on this site. Use HTTPS (or localhost) to enable camera access.");
       return;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setScanModalOpen(true);
       setScanErr("Your browser does not support camera access (getUserMedia missing).");
       return;
     }
-
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
-    } catch (err) {
-      setScanModalOpen(true);
-      setScanErr(cameraErrToMessage(err));
-      return;
-    }
-
-    setScanModalOpen(true);
-
-    await new Promise((r) => requestAnimationFrame(r));
-
-    const v = videoRef.current;
-    if (!v) {
-      stream.getTracks().forEach((t) => t.stop());
-      setScanErr("Scanner UI did not initialize. Please try again.");
-      return;
-    }
-
-    v.srcObject = stream;
-    try {
-      await v.play();
-    } catch { }
-
-    let barcodeDetector = null;
-    if ("BarcodeDetector" in window) {
-      try {
-        const formats = await window.BarcodeDetector.getSupportedFormats?.();
-        if (!formats || formats.includes("qr_code")) {
-          barcodeDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        }
-      } catch { }
-    }
-
-    let jsQRFn = null;
-    try {
-      const mod = await import("jsqr");
-      jsQRFn = mod.default;
-    } catch { }
-
-    const tick = async () => {
-      try {
-        const vv = videoRef.current;
-        if (!vv) return;
-
-        if (barcodeDetector) {
-          const codes = await barcodeDetector.detect(vv);
-          if (codes?.length) {
-            await handleQrFound(codes[0].rawValue || "");
-            return;
-          }
-        }
-
-        if (jsQRFn) {
-          const canvas = canvasRef.current || (canvasRef.current = document.createElement("canvas"));
-
-          const vw = vv.videoWidth || 640;
-          const vh = vv.videoHeight || 480;
-
-          const cw = Math.min(1024, vw);
-          const ch = Math.floor((cw / vw) * vh);
-
-          canvas.width = cw;
-          canvas.height = ch;
-
-          const ctx = canvas.getContext("2d", { willReadFrequently: true });
-          ctx.drawImage(vv, 0, 0, cw, ch);
-          const imageData = ctx.getImageData(0, 0, cw, ch);
-
-          const code = jsQRFn(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "attemptBoth",
-          });
-
-          if (code?.data) {
-            await handleQrFound(code.data);
-            return;
-          }
-        }
-      } catch { }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
   }
 
   function stopCamera() {
     cancelAnimationFrame(rafRef.current);
-    const v = videoRef.current;
-    const stream = v?.srcObject;
+    rafRef.current = 0;
 
-    if (stream?.getTracks) stream.getTracks().forEach((t) => t.stop());
-    if (v) v.srcObject = null;
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => {
+        try {
+          t.stop();
+          t.enabled = false;
+        } catch { }
+      });
+      cameraStreamRef.current = null;
+    }
+
+    const v = videoRef.current;
+    if (v) {
+      try {
+        v.pause();
+        v.srcObject = null;
+      } catch { }
+    }
   }
+
+  // ✅ Cross-browser robust camera scanner (Main thread jsqr for CSP/Worker compatibility)
+  useEffect(() => {
+    let alive = true;
+    let scanActive = false;
+
+    const run = async () => {
+      // 1. Initial State Check
+      if (!scanModalOpen || scanMode !== "camera" || !isLoggedIn) {
+        stopCamera();
+        return;
+      }
+
+      // 2. Prevent Overlapping Calls
+      if (isOpeningRef.current) return;
+      isOpeningRef.current = true;
+
+      try {
+        stopCamera();
+        // Give hardware time to release previous session
+        await new Promise((r) => setTimeout(r, 600));
+        if (!alive) return;
+
+        // 3. Request Camera with Cross-Browser Fallbacks
+        let stream;
+        const constraintTiers = [
+          { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          { video: { facingMode: "environment" }, audio: false },
+          { video: true, audio: false },
+          { video: true }
+        ];
+
+        let lastErr = null;
+        for (const constraints of constraintTiers) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            if (stream) break;
+          } catch (e) {
+            lastErr = e;
+            console.warn("Camera tier failed, trying next...", constraints, e);
+          }
+        }
+
+        if (!stream) throw lastErr || new Error("No camera access available.");
+        if (!alive) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
+        cameraStreamRef.current = stream;
+
+        // 4. Wait for Video Element & Attach Stream
+        let attempts = 0;
+        while (!videoRef.current && attempts < 30) {
+          await new Promise((r) => setTimeout(r, 100));
+          attempts++;
+        }
+
+        const v = videoRef.current;
+        if (!v) throw new Error("Video element not found in DOM.");
+
+        v.srcObject = stream;
+        
+        // Critical for Safari/iOS: must be ready before play()
+        try {
+          await v.play();
+        } catch (e) {
+          console.warn("Auto-play blocked or failed, waiting for user interaction or data:", e);
+        }
+
+        // 5. Scan Loop (tick)
+        scanActive = true;
+        // Initialize native detector if available (much faster)
+        let barcodeDetector = null;
+        if ("BarcodeDetector" in window) {
+          try {
+            barcodeDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
+          } catch { }
+        }
+
+        const tick = async () => {
+          if (!alive || !scanActive || !videoRef.current) return;
+
+          try {
+            const vv = videoRef.current;
+            // HAVE_CURRENT_DATA (2) is enough to start trying
+            if (vv.readyState >= 2 && vv.videoWidth > 0) {
+              // 1. Try Native BarcodeDetector first
+              if (barcodeDetector) {
+                try {
+                  const codes = await barcodeDetector.detect(vv);
+                  if (codes?.length) {
+                    scanActive = false;
+                    handleQrFound(codes[0].rawValue || "");
+                    return;
+                  }
+                } catch (e) {
+                  console.warn("Native detection failed, falling back:", e);
+                }
+              }
+
+              // 2. Fallback to jsQR
+              const canvas = canvasRef.current || (canvasRef.current = document.createElement("canvas"));
+              const vw = vv.videoWidth;
+              const vh = vv.videoHeight;
+              const cw = Math.min(1024, vw);
+              const ch = Math.floor((cw / vw) * vh);
+
+              if (canvas.width !== cw || canvas.height !== ch) {
+                canvas.width = cw;
+                canvas.height = ch;
+              }
+
+              const ctx = canvas.getContext("2d", { willReadFrequently: true });
+              ctx.drawImage(vv, 0, 0, cw, ch);
+              const imageData = ctx.getImageData(0, 0, cw, ch);
+
+              const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "attemptBoth",
+              });
+
+              if (code?.data) {
+                scanActive = false;
+                handleQrFound(code.data);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn("Scan loop error:", e);
+          }
+
+          rafRef.current = requestAnimationFrame(tick);
+        };
+
+        rafRef.current = requestAnimationFrame(tick);
+      } catch (err) {
+        if (alive) {
+          setScanErr(cameraErrToMessage(err));
+        }
+      } finally {
+        isOpeningRef.current = false;
+      }
+    };
+
+    run();
+
+    return () => {
+      alive = false;
+      scanActive = false;
+      stopCamera();
+    };
+  }, [scanModalOpen, scanMode, isLoggedIn]);
 
   async function handleUploadFile(file) {
     // ✅ login required

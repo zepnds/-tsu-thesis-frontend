@@ -133,26 +133,44 @@ function isTruthyStr(v) {
 }
 
 function statusBadgeProps(statusRaw) {
-  console.log(statusRaw);
-  switch (statusRaw) {
-    case true:
+
+  const s = safeLower(statusRaw);
+  console.log(s);
+  switch (s) {
+    case "occupied":
+    case "active":
       return {
-        label: "Active",
+        label: "Occupied",
         className: "bg-emerald-600 hover:bg-emerald-600",
       };
-    case false:
+    case "reserved":
       return {
         label: "Reserved",
         className: "bg-amber-500 hover:bg-amber-500",
       };
-
+    case "available":
+      return {
+        label: "Available",
+        className: "bg-sky-500 hover:bg-sky-500",
+      };
+    case "maintenance":
+      return {
+        label: "Maintenance",
+        className: "bg-rose-500 hover:bg-rose-500",
+      };
     default:
+      // Handle legacy boolean activity
+      if (statusRaw === true) {
+        return {
+          label: "Active",
+          className: "bg-emerald-600 hover:bg-emerald-600",
+        };
+      }
       return {
         label: statusRaw || "—",
         className: "bg-slate-500 hover:bg-slate-500",
       };
   }
-
 }
 
 function normalizePlotRow(r) {
@@ -201,6 +219,7 @@ function normalizePlotRow(r) {
   return {
     ...data,
     id,
+    plot_id: data?.plot_id ?? data?.id ?? null,
     uid,
     status,
     person_full_name,
@@ -619,20 +638,34 @@ export default function BurialRecords() {
         return;
       }
 
-      const xml = new XMLSerializer().serializeToString(svg);
+      // Clone the SVG and force dimensions to ensure reliable canvas drawing
+      const clonedSvg = svg.cloneNode(true);
+      clonedSvg.setAttribute("width", "1024");
+      clonedSvg.setAttribute("height", "1024");
+      if (!clonedSvg.getAttribute("xmlns")) {
+        clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      }
+
+      const xml = new XMLSerializer().serializeToString(clonedSvg);
       const svgBlob = new Blob([xml], {
         type: "image/svg+xml;charset=utf-8",
       });
       const svgUrl = URL.createObjectURL(svgBlob);
 
       const img = new Image();
-      img.decoding = "async";
-
-      await new Promise((resolve, reject) => {
+      const loadPromise = new Promise((resolve, reject) => {
         img.onload = resolve;
-        img.onerror = reject;
+        img.onerror = () => reject(new Error("Failed to load QR as image."));
         img.src = svgUrl;
       });
+
+      await loadPromise;
+      // Some browsers (like Safari) benefit from explicit decoding before canvas drawing
+      if (typeof img.decode === "function") {
+        try {
+          await img.decode();
+        } catch { }
+      }
 
       const size = 1024;
       const canvas = document.createElement("canvas");
@@ -642,11 +675,13 @@ export default function BurialRecords() {
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         URL.revokeObjectURL(svgUrl);
-        throw new Error("Canvas not available.");
+        throw new Error("Canvas context not available.");
       }
 
+      // Draw white background
       ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, size, size);
+      // Draw the QR image
       ctx.drawImage(img, 0, 0, size, size);
 
       const blob = await new Promise((resolve) =>
@@ -655,7 +690,7 @@ export default function BurialRecords() {
 
       URL.revokeObjectURL(svgUrl);
 
-      if (!blob) throw new Error("Failed to create PNG.");
+      if (!blob) throw new Error("Failed to create PNG blob.");
       downloadBlob(`${qrBaseName}.png`, blob);
       toast.success("QR code downloaded as PNG.");
     } catch (e) {
@@ -843,7 +878,7 @@ export default function BurialRecords() {
                   <TableRow>
                     <TableHead>Plot ID</TableHead>
                     <TableHead>Plot</TableHead>
-                    <TableHead>Status</TableHead>
+
                     <TableHead>Deceased</TableHead>
                     <TableHead>DOB</TableHead>
                     <TableHead>DOD</TableHead>
@@ -854,7 +889,7 @@ export default function BurialRecords() {
                 <TableBody>
                   {paged.map((r) => {
                     const key = String(r?.id ?? r?.uid ?? Math.random());
-                    const s = statusBadgeProps(r?.is_active);
+                    const s = statusBadgeProps(r?.status);
 
                     return (
                       <TableRow key={key}>
@@ -877,9 +912,7 @@ export default function BurialRecords() {
                           ) : null}
                         </TableCell>
 
-                        <TableCell>
-                          <Badge className={s.className}>{s.label}</Badge>
-                        </TableCell>
+
 
                         <TableCell>
                           <div className="text-sm font-medium text-slate-900">
