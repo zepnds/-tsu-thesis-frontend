@@ -2508,7 +2508,7 @@ export default function BurialPlots() {
                   </CardHeader>
                   <CardContent>
                     <div className="h-[300px] rounded-md overflow-hidden border-2 border-blue-500 ring-2 ring-blue-200">
-                      {/* <CemeteryMapMemo
+                      <CemeteryMapMemo
                         center={modalMapCenter}
                         zoom={modalMapZoom}
                         clickable={true}
@@ -2517,7 +2517,7 @@ export default function BurialPlots() {
                         showLegend={false}
                         polylines={roadLines}
                         markers={EMPTY_ARR}
-                      /> */}
+                      />
                     </div>
                   </CardContent>
                 </Card>
