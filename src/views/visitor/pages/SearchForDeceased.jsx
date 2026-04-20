@@ -1295,7 +1295,7 @@ export default function SearchForDeceased() {
         if (!v) throw new Error("Video element not found in DOM.");
 
         v.srcObject = stream;
-        
+
         // Critical for Safari/iOS: must be ready before play()
         try {
           await v.play();
@@ -1338,26 +1338,33 @@ export default function SearchForDeceased() {
               const canvas = canvasRef.current || (canvasRef.current = document.createElement("canvas"));
               const vw = vv.videoWidth;
               const vh = vv.videoHeight;
-              const cw = Math.min(1024, vw);
-              const ch = Math.floor((cw / vw) * vh);
 
-              if (canvas.width !== cw || canvas.height !== ch) {
-                canvas.width = cw;
-                canvas.height = ch;
-              }
+              if (vw > 0 && vh > 0) {
+                const cw = Math.min(1024, vw);
+                const ch = Math.floor((cw / vw) * vh);
 
-              const ctx = canvas.getContext("2d", { willReadFrequently: true });
-              ctx.drawImage(vv, 0, 0, cw, ch);
-              const imageData = ctx.getImageData(0, 0, cw, ch);
+                if (canvas.width !== cw || canvas.height !== ch) {
+                  canvas.width = cw;
+                  canvas.height = ch;
+                }
 
-              const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: "attemptBoth",
-              });
+                const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                ctx.drawImage(vv, 0, 0, cw, ch);
+                const imageData = ctx.getImageData(0, 0, cw, ch);
 
-              if (code?.data) {
-                scanActive = false;
-                handleQrFound(code.data);
-                return;
+                // Handle potential ESM/CJS default export differences
+                const decodeFn = typeof jsQR === "function" ? jsQR : (jsQR?.default);
+                if (typeof decodeFn === "function") {
+                  const code = decodeFn(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "attemptBoth",
+                  });
+
+                  if (code?.data) {
+                    scanActive = false;
+                    handleQrFound(code.data);
+                    return;
+                  }
+                }
               }
             }
           } catch (e) {

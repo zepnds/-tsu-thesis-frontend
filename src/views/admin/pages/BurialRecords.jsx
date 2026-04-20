@@ -756,20 +756,7 @@ export default function BurialRecords() {
             <div className="flex flex-wrap items-end gap-3 justify-between lg:justify-end">
 
 
-              <div className="min-w-[180px]">
-                <Label className="text-xs text-slate-500">Status</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="occupied">Occupied</SelectItem>
-                    <SelectItem value="reserved">Reserved</SelectItem>
-                    <SelectItem value="available">Available</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
 
               <div className="min-w-[160px]">
                 <Label className="text-xs text-slate-500">Rows per page</Label>
