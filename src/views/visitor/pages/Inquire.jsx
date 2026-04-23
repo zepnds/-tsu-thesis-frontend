@@ -1462,96 +1462,88 @@ export default function Inquire() {
                         Maintenance lookup
                       </div>
 
-
-
-                      {maintenanceLookupMode === "family" ? (
+                      <div className="space-y-3">
                         <p className="text-xs text-slate-600">
-                          Use the dropdown above to select a deceased family member already linked to your
-                          account through burial requests or related records.
+                          Optional: if the person is not linked to your account, search for the buried
+                          person or plot here and select the result for your maintenance request.
                         </p>
-                      ) : (
-                        <div className="space-y-3">
-                          <p className="text-xs text-slate-600">
-                            Optional: if the person is not linked to your account, search for the buried
-                            person or plot here and select the result for your maintenance request.
-                          </p>
 
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <Input
-                              type="text"
-                              value={externalSearchQ}
-                              onChange={(e) => setExternalSearchQ(e.target.value)}
-                              placeholder="Search buried person or plot"
-                              disabled={!isVisitorLoggedIn || submitting}
-                              className="bg-white/70"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={searchBuriedPlots}
-                              disabled={!isVisitorLoggedIn || submitting || externalSearchBusy}
-                              className="gap-2"
-                            >
-                              <Search className="h-4 w-4" />
-                              {externalSearchBusy ? "Searching..." : "Search"}
-                            </Button>
-                          </div>
-
-                          {externalSearchError ? (
-                            <p className="text-xs text-rose-600">{externalSearchError}</p>
-                          ) : null}
-
-                          {externalSearchRows.length ? (
-                            <div className="max-h-60 overflow-auto rounded-xl border bg-white">
-                              <div className="divide-y">
-                                {externalSearchRows.map((row, idx) => {
-                                  const searchName = extractBurialSearchName(row) || "—";
-                                  const searchPlotId = extractBurialSearchPlotId(row);
-                                  const searchPlotLabel = extractBurialSearchPlotLabel(row);
-                                  return (
-                                    <div
-                                      key={`${searchPlotId || "row"}-${idx}`}
-                                      className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="font-medium text-slate-900">{searchName}</div>
-                                        <div className="text-xs text-slate-500">
-                                          Plot: {searchPlotLabel}
-                                          {searchPlotId != null ? ` (#${String(searchPlotId)})` : ""}
-                                        </div>
-                                        <div className="text-xs text-slate-500">
-                                          Birth: {row?.birth_date || "—"} • Death: {row?.death_date || "—"}
-                                        </div>
-                                      </div>
-
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        onClick={() => {
-                                          setSelectedSearchRecord(row);
-                                          setSelectedName("");
-                                          setDeceasedName(searchName);
-                                          setAutoPlotId(null);
-                                          setManualPlotId(
-                                            searchPlotId != null ? String(searchPlotId) : null
-                                          );
-                                          setPrefillReservationId(null);
-                                          setMsg({
-                                            type: "ok",
-                                            text: `Selected ${searchName} for maintenance request.`,
-                                          });
-                                        }}
-                                      >
-                                        Use this
-                                      </Button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : null}
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Input
+                            type="text"
+                            value={externalSearchQ}
+                            onChange={(e) => setExternalSearchQ(e.target.value)}
+                            placeholder="Search buried person or plot"
+                            disabled={!isVisitorLoggedIn || submitting}
+                            className="bg-white/70"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={searchBuriedPlots}
+                            disabled={!isVisitorLoggedIn || submitting || externalSearchBusy}
+                            className="gap-2"
+                          >
+                            <Search className="h-4 w-4" />
+                            {externalSearchBusy ? "Searching..." : "Search"}
+                          </Button>
                         </div>
-                      )}
+
+                        {externalSearchError ? (
+                          <p className="text-xs text-rose-600">{externalSearchError}</p>
+                        ) : null}
+
+                        {externalSearchRows.length ? (
+                          <div className="max-h-60 overflow-auto rounded-xl border bg-white">
+                            <div className="divide-y">
+                              {externalSearchRows.map((row, idx) => {
+                                const searchName = extractBurialSearchName(row) || "—";
+                                const searchPlotId = extractBurialSearchPlotId(row);
+                                const searchPlotLabel = extractBurialSearchPlotLabel(row);
+                                return (
+                                  <div
+                                    key={`${searchPlotId || "row"}-${idx}`}
+                                    className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="font-medium text-slate-900">{searchName}</div>
+                                      <div className="text-xs text-slate-500">
+                                        Plot: {searchPlotLabel}
+                                        {searchPlotId != null ? ` (#${String(searchPlotId)})` : ""}
+                                      </div>
+                                      <div className="text-xs text-slate-500">
+                                        Birth: {row?.birth_date || "—"} • Death: {row?.death_date || "—"}
+                                      </div>
+                                    </div>
+
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedSearchRecord(row);
+                                        setSelectedName("");
+                                        setDeceasedName(searchName);
+                                        setAutoPlotId(null);
+                                        setManualPlotId(
+                                          searchPlotId != null ? String(searchPlotId) : null
+                                        );
+                                        setPrefillReservationId(null);
+                                        setMsg({
+                                          type: "ok",
+                                          text: `Selected ${searchName} for maintenance request.`,
+                                        });
+                                      }}
+                                    >
+                                      Use this
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
 
                       {selectedSearchRecord ? (
                         <div className="rounded-xl border bg-emerald-50 p-3 text-xs text-emerald-900">

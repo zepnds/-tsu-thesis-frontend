@@ -700,6 +700,7 @@ function BurialScheduleInner() {
   const currentUser = useAuthUser();
 
   const [rows, setRows] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const [q, setQ] = useState("");

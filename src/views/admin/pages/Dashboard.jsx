@@ -150,14 +150,15 @@ export default function Dashboard() {
   }
 
   async function handleConfirm(id) {
+    console.log("confirming", id);
     if (!id) return;
     try {
       setIsConfirming(true);
       const auth = getAuth();
       if (!auth?.token) throw new Error("Not authenticated");
 
-      const res = await fetch(`${API_BASE}/admin/burial-requests/${id}/confirm`, {
-        method: "POST",
+      const res = await fetch(`${API_BASE}/admin/burial-schedule/confirm?id=${id}&status=approved`, {
+        method: "PUT",
         headers: { Authorization: `Bearer ${auth.token}` },
       });
 
@@ -535,6 +536,7 @@ function PriorityBadge({ priority }) {
 }
 
 function ScheduleTable({ items, emptyText, onView, onConfirm, isConfirming }) {
+  console.log(items)
   if (!items?.length) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center border rounded-lg bg-slate-50/50">
@@ -637,6 +639,14 @@ function ViewModal({ item, onOpenChange }) {
             <div className="grid grid-cols-3 gap-2">
               <Label className="text-muted-foreground">Time</Label>
               <div className="col-span-2">{item.scheduled_time || "TBD"}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Birth Date</Label>
+              <div className="col-span-2">{safeDateLabel(item.birth_date)}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Death Date</Label>
+              <div className="col-span-2">{safeDateLabel(item.death_date)}</div>
             </div>
             <div className="grid grid-cols-3 gap-2">
               <Label className="text-muted-foreground">Status</Label>
