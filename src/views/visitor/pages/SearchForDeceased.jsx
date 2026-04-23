@@ -309,6 +309,8 @@ const similarity = (a, b) => {
 
 const getDeceasedName = (r) =>
   (
+    r?.deceased_name ??
+    r?.deceasedName ??
     r?.person_full_name ??
     r?.personFullName ??
     r?.person_name ??
@@ -603,7 +605,7 @@ export default function SearchForDeceased() {
 
   const [results, setResults] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
-
+  console.log(results);
   const [selected, setSelected] = useState(null);
 
   const [scanDataForSelected, setScanDataForSelected] = useState(null);

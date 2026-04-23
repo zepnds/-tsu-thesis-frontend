@@ -233,12 +233,7 @@ export default function MaintenanceSchedules() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const qs =
-        statusFilter && statusFilter !== "All"
-          ? `?status=${encodeURIComponent(statusFilter)}`
-          : "";
-
-      const url = `${API_BASE}/admin/maintenance-requests${qs}`;
+      const url = `${API_BASE}/admin/maintenance-requests`;
       console.log("[Admin Maintenance] GET", url);
 
       const res = await fetch(url, {
@@ -261,7 +256,7 @@ export default function MaintenanceSchedules() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, []);
 
   const fetchPlotsGeo = useCallback(async () => {
     try {
@@ -284,6 +279,13 @@ export default function MaintenanceSchedules() {
     const needle = q.trim().toLowerCase();
 
     return rows.filter((r) => {
+      // 1. Status Filter
+      if (statusFilter !== "All") {
+        const rowStatus = String(r.status || "").toLowerCase();
+        if (rowStatus !== statusFilter.toLowerCase()) return false;
+      }
+
+      // 2. Search Filter
       const text =
         [
           r.deceased_name,
@@ -301,7 +303,7 @@ export default function MaintenanceSchedules() {
       const passQ = !needle || text.includes(needle);
       return passQ;
     });
-  }, [rows, q]);
+  }, [rows, q, statusFilter]);
 
   const highlightedPlotId = useMemo(() => {
     const id = getRowPlotId(hoveredRow) ?? getRowPlotId(viewItem) ?? null;

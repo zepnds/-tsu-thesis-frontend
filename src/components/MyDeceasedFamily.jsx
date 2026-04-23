@@ -8,8 +8,9 @@ import {
 } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { Button } from "./ui/button";
-import QRCode from "react-qr-code";
+
+import QrPanel, { makeQrDataUrl } from "./QrPanel";
+import { CEMETERY_CENTER } from "./map/CemeteryMap";
 
 const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) || "";
@@ -102,6 +103,10 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
   const [loadingReservations, setLoadingReservations] = useState(false);
   const [reservations, setReservations] = useState([]);
 
+  const [activeTab, setActiveTab] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [qrErr, setQrErr] = useState("");
+
   const auth = useMemo(() => readAuth(), []);
   const token = useMemo(() => getToken(auth), [auth]);
   const userId = auth?.user?.id;
@@ -155,6 +160,9 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
               : [];
 
         setFamily(items);
+        if (items.length > 0 && !activeTab) {
+          setActiveTab(items[0].id?.toString());
+        }
       } catch (err) {
         console.error("Error fetching deceased family:", err);
         setFamily([]);
@@ -185,6 +193,140 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
     ENDPOINTS.legacyFamily,
     headers,
   ]);
+
+  const parseNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const getCentroid = (coordinates) => {
+    if (!coordinates) return null;
+    try {
+      // Handle both stringified and object GeoJSON
+      const geo = typeof coordinates === "string" ? JSON.parse(coordinates) : coordinates;
+      if (geo.type === "Polygon" && geo.coordinates?.[0]) {
+        const pts = geo.coordinates[0];
+        let latSum = 0, lngSum = 0;
+        pts.forEach((p) => {
+          lngSum += p[0];
+          latSum += p[1];
+        });
+        return { lat: latSum / pts.length, lng: lngSum / pts.length };
+      }
+      if (geo.type === "Point" && geo.coordinates) {
+        return { lat: geo.coordinates[1], lng: geo.coordinates[0] };
+      }
+    } catch (e) {
+      console.warn("Failed to parse coordinates for centroid:", e);
+    }
+    return null;
+  };
+
+  const getLatLngFromRow = (row) => {
+    if (!row) return null;
+
+    // 1. Try direct properties (flattened)
+    let lat = row.lat ?? row.latitude;
+    let lng = row.lng ?? row.longitude;
+
+    // 2. Try joined plot entity
+    if (lat == null && row.plot) {
+      lat = row.plot.lat ?? row.plot.latitude;
+      lng = row.plot.lng ?? row.plot.longitude;
+
+      // 3. Extract from geometry if needed
+      if (lat == null && row.plot.coordinates) {
+        const centroid = getCentroid(row.plot.coordinates);
+        if (centroid) {
+          lat = centroid.lat;
+          lng = centroid.lng;
+        }
+      }
+    }
+
+    lat = parseNum(lat);
+    lng = parseNum(lng);
+
+    if (lat == null || lng == null) return null;
+    return { lat, lng };
+  };
+
+  const buildAutoQrTokenFromRow = (row) => {
+    if (!row) return "";
+    const coords = getLatLngFromRow(row);
+    const plot = row.plot || {};
+
+    const payload = {
+      _type: "grave",
+      id: row.id ?? null,
+      uid: row.uid ?? null,
+      deceased_name: row.deceased_name ?? null,
+      plot_id: row.plot_id ?? null,
+      plot_name: plot.plot_name || row.plot_name || null,
+      plot_type: plot.plot_type || row.plot_type || null,
+      status: plot.status || row.status || null,
+      price: plot.price || row.price || null,
+      person_full_name: row.deceased_name || row.person_full_name || null,
+      date_of_birth: row.birth_date || row.date_of_birth || null,
+      date_of_death: row.death_date || row.date_of_death || null,
+      photo_url: row.photo_url ?? null,
+      lat: coords?.lat ?? CEMETERY_CENTER.lat,
+      lng: coords?.lng ?? CEMETERY_CENTER.lng,
+    };
+
+    return JSON.stringify(payload);
+  };
+
+  const resolveQrToken = (row) => {
+    if (!row) return "";
+    const direct =
+      row.qr_token ??
+      row.qr_value ??
+      row.qr_data ??
+      row.qr ??
+      row.qrUrl ??
+      row.qr_url ??
+      row.qrText ??
+      row.qr_text;
+
+    if (direct && String(direct).trim()) return String(direct).trim();
+    return buildAutoQrTokenFromRow(row);
+  };
+
+  const sanitizeFilename = (name) => {
+    if (!name) return "plot";
+    return name.toString().replace(/[^a-z0-9]/gi, "-").toLowerCase();
+  };
+
+  // ✅ generate QR for active tab
+  useEffect(() => {
+    let alive = true;
+    const current = family.find((f) => f.id?.toString() === activeTab);
+    const token = resolveQrToken(current);
+
+    if (!token) {
+      setQrDataUrl("");
+      setQrErr("");
+      return;
+    }
+
+    (async () => {
+      try {
+        const url = await makeQrDataUrl(token);
+        if (!alive) return;
+        setQrDataUrl(url);
+        setQrErr("");
+      } catch (e) {
+        if (!alive) return;
+        setQrErr(String(e?.message || e));
+        setQrDataUrl("");
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [activeTab, family]);
 
   // const handleDownloadQR = (_value, id) => {
   //   try {
@@ -255,7 +397,11 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
           <div className="space-y-4">
             {/* ===================== DECEASED FAMILY ===================== */}
             {family.length > 0 ? (
-              <Tabs defaultValue={family[0]?.id?.toString()} className="w-full">
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="w-full"
+              >
                 <div className="relative overflow-hidden border border-emerald-100 rounded-lg bg-gradient-to-br from-emerald-50/80 to-cyan-50/80 backdrop-blur p-2 shadow-md">
                   <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/5 via-cyan-400/5 to-blue-400/5"></div>
                   <TabsList className="relative flex flex-wrap gap-1">
@@ -295,30 +441,18 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
                           <InfoField label="Plot ID" value={d.plot_id} />
                           <InfoField label="Memorial Text" value={d.memorial_text} italic />
 
-                          {/* <div className="relative group overflow-hidden p-4 border border-emerald-100/50 rounded-lg bg-gradient-to-br from-slate-50/80 to-white/80 backdrop-blur hover:border-emerald-200 transition-all duration-300 flex flex-col items-center">
-                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/5 to-cyan-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                            <div className="relative text-xs font-semibold text-emerald-600 uppercase mb-3 self-start">
-                              QR Token
-                            </div>
-
-                            {d.qr_token ? (
-                              <>
-                                <div className="relative bg-white p-3 border-2 border-emerald-100 rounded-lg shadow-md group-hover:shadow-lg transition-shadow">
-                                  <QRCode id={`qr-${d.id}`} value={d.qr_token} size={120} />
-                                </div>
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  className="relative mt-3 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white hover:from-emerald-600 hover:to-cyan-600 shadow-md hover:shadow-lg transition-all"
-                                  onClick={() => handleDownloadQR(d.qr_token, d.id)}
-                                >
-                                  Download QR
-                                </Button>
-                              </>
-                            ) : (
-                              <span className="relative text-slate-600">—</span>
+                          <div className="md:col-span-2">
+                            <QrPanel
+                              title="Grave QR Code"
+                              hasToken={true}
+                              dataUrl={activeTab === d.id?.toString() ? qrDataUrl : ""}
+                              downloadName={`grave-qr-${sanitizeFilename(d.deceased_name || d.id)}.png`}
+                              hint="This QR allows visitors to find this grave."
+                            />
+                            {qrErr && activeTab === d.id?.toString() && (
+                              <div className="mt-2 text-xs text-rose-600">{qrErr}</div>
                             )}
-                          </div> */}
+                          </div>
                         </CardContent>
                       </Card>
                     </div>

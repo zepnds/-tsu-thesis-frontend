@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAuth } from "../../../utils/auth";
 import { Toaster, toast } from "sonner";
-import QRCode from "react-qr-code";
+import QrPanel from "../../../components/QrPanel";
+import { CEMETERY_CENTER } from "../../../components/map/CemeteryMap";
 
 import {
   RefreshCcw,
@@ -249,56 +250,121 @@ function extractPlotRows(body) {
   return [];
 }
 
-function buildFallbackQr(details) {
-  if (!details) return "";
+function parseNum(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getCentroid(coordinates) {
+  if (!coordinates) return null;
+  try {
+    const geo = typeof coordinates === "string" ? JSON.parse(coordinates) : coordinates;
+    if (geo.type === "Polygon" && geo.coordinates?.[0]) {
+      const pts = geo.coordinates[0];
+      let latSum = 0,
+        lngSum = 0;
+      pts.forEach((p) => {
+        lngSum += p[0];
+        latSum += p[1];
+      });
+      return { lat: latSum / pts.length, lng: lngSum / pts.length };
+    }
+    if (geo.type === "Point" && geo.coordinates) {
+      return { lat: geo.coordinates[1], lng: geo.coordinates[0] };
+    }
+  } catch (e) {
+    console.warn("Failed to parse coordinates for centroid:", e);
+  }
+  return null;
+}
+
+function getLatLngFromRow(row) {
+  if (!row) return null;
+
+  // 1. Try direct properties
+  let lat = row.lat ?? row.latitude;
+  let lng = row.lng ?? row.longitude;
+
+  // 2. Try nested plot object
+  if (lat == null && row.plot) {
+    lat = row.plot.lat ?? row.plot.latitude;
+    lng = row.plot.lng ?? row.plot.longitude;
+  }
+
+  // 3. Try geometry or coordinates fields
+  if (lat == null) {
+    const geomSource = row.geometry ?? row.coordinates ?? row.plot?.geometry ?? row.plot?.coordinates;
+    if (geomSource) {
+      const centroid = getCentroid(geomSource);
+      if (centroid) {
+        lat = centroid.lat;
+        lng = centroid.lng;
+      }
+    }
+  }
+
+  lat = parseNum(lat);
+  lng = parseNum(lng);
+
+  if (lat == null || lng == null) return null;
+  return { lat, lng };
+}
+
+function buildAutoQrTokenFromRow(row) {
+  if (!row) return "";
+  const coords = getLatLngFromRow(row);
 
   const payload = {
     _type: "grave",
-    id: details?.id ?? null,
-    uid: details?.uid ?? null,
-    plot_name: details?.plot_name ?? null,
-    plot_type: details?.plot_type ?? null,
-    status: details?.status ?? null,
-    price: details?.price ?? null,
-    person_full_name: details?.person_full_name ?? null,
-    date_of_birth: details?.date_of_birth ?? details?.birth_date ?? null,
-    date_of_death: details?.date_of_death ?? details?.death_date ?? null,
-    next_of_kin_name: details?.next_of_kin_name ?? null,
-    contact_phone: details?.contact_phone ?? null,
-    contact_email: details?.contact_email ?? null,
-    notes: details?.notes ?? null,
-    lat: details?.lat ?? null,
-    lng: details?.lng ?? null,
+    id: row.id ?? null,
+    uid: row.uid ?? null,
+    plot_name: row.plot_name ?? null,
+    plot_type: row.plot_type ?? null,
+    status: row.status ?? null,
+    price: row.price ?? null,
+    person_full_name: row.person_full_name ?? null,
+    date_of_birth: row.date_of_birth ?? null,
+    date_of_death: row.date_of_death ?? null,
+    photo_url: row.photo_url ?? null,
+    lat: coords?.lat ?? CEMETERY_CENTER.lat,
+    lng: coords?.lng ?? CEMETERY_CENTER.lng,
   };
 
   return JSON.stringify(payload);
 }
 
-function resolveQrText(details) {
+function resolveQrText(row) {
+  if (!row) return "";
   const direct =
-    details?.qr_token ??
-    details?.qrToken ??
-    details?.qr ??
-    details?.qr_value ??
-    details?.qrValue ??
-    "";
+    row.qr_token ??
+    row.qr_value ??
+    row.qr_data ??
+    row.qr ??
+    row.qrUrl ??
+    row.qr_url ??
+    row.qrText ??
+    row.qr_text;
 
-  if (String(direct || "").trim()) return String(direct).trim();
-  return buildFallbackQr(details);
+  if (direct && String(direct).trim()) return String(direct).trim();
+  return buildAutoQrTokenFromRow(row);
 }
 
-function downloadBlob(filename, blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+async function makeQrDataUrl(text, opts = {}) {
+  const mod = await import("qrcode");
+  const toDataURL = mod.toDataURL || mod.default?.toDataURL;
+  if (typeof toDataURL !== "function")
+    throw new Error("qrcode.toDataURL not available");
+
+  return await toDataURL(text, {
+    errorCorrectionLevel: "M",
+    margin: 2,
+    width: 320,
+    ...opts,
+  });
 }
 
-function safeFileName(s) {
+function sanitizeFilename(s) {
   return String(s || "plot")
     .trim()
     .toLowerCase()
@@ -327,8 +393,6 @@ export default function BurialRecords() {
     }),
     []
   );
-
-  const qrWrapRef = useRef(null);
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -505,6 +569,10 @@ export default function BurialRecords() {
           contact_email: normalized?.contact_email ?? "",
           notes: normalized?.notes ?? "",
           qr_token: normalized?.qr_token ?? "",
+          lat: normalized?.lat ?? null,
+          lng: normalized?.lng ?? null,
+          geometry: normalized?.geometry ?? null,
+          coordinates: normalized?.coordinates ?? null,
         });
       } catch (e) {
         setDetailsErr(String(e?.message || e));
@@ -523,16 +591,28 @@ export default function BurialRecords() {
     setPage(1);
   };
 
-  const qrText = useMemo(() => resolveQrText(editMode ? editDraft : details), [
+  const detailsView = useMemo(() => (editMode ? editDraft : details), [
     details,
     editDraft,
     editMode,
   ]);
 
-  const qrBaseName = useMemo(() => {
-    const src = editMode ? editDraft : details;
-    return safeFileName(src?.plot_name || src?.uid || src?.id || "qr_code");
-  }, [details, editDraft, editMode]);
+  const qrText = useMemo(() => resolveQrText(detailsView), [detailsView]);
+
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  useEffect(() => {
+    if (!qrText) {
+      setQrDataUrl("");
+      return;
+    }
+    makeQrDataUrl(qrText)
+      .then(setQrDataUrl)
+      .catch((e) => {
+        console.warn("makeQrDataUrl failed:", e);
+        setQrDataUrl("");
+      });
+  }, [qrText]);
+
 
   const handleDraftChange = (field, value) => {
     setEditDraft((prev) => ({ ...(prev || {}), [field]: value }));
@@ -605,100 +685,10 @@ export default function BurialRecords() {
     }
   };
 
-  const handleCopyQr = async () => {
-    try {
-      await navigator.clipboard.writeText(qrText);
-      toast.success("QR payload copied.");
-    } catch {
-      toast.error("Failed to copy QR payload.");
-    }
+  const handleCopyQr = () => {
+    // Handled by QrPanel
   };
 
-  const handleDownloadQrSvg = () => {
-    try {
-      const svg = qrWrapRef.current?.querySelector("svg");
-      if (!svg) {
-        toast.error("QR code not ready.");
-        return;
-      }
-      const xml = new XMLSerializer().serializeToString(svg);
-      const blob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
-      downloadBlob(`${qrBaseName}.svg`, blob);
-      toast.success("QR code downloaded as SVG.");
-    } catch (e) {
-      toast.error(String(e?.message || e || "Failed to download SVG."));
-    }
-  };
-
-  const handleDownloadQrPng = async () => {
-    try {
-      const svg = qrWrapRef.current?.querySelector("svg");
-      if (!svg) {
-        toast.error("QR code not ready.");
-        return;
-      }
-
-      // Clone the SVG and force dimensions to ensure reliable canvas drawing
-      const clonedSvg = svg.cloneNode(true);
-      clonedSvg.setAttribute("width", "1024");
-      clonedSvg.setAttribute("height", "1024");
-      if (!clonedSvg.getAttribute("xmlns")) {
-        clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-      }
-
-      const xml = new XMLSerializer().serializeToString(clonedSvg);
-      const svgBlob = new Blob([xml], {
-        type: "image/svg+xml;charset=utf-8",
-      });
-      const svgUrl = URL.createObjectURL(svgBlob);
-
-      const img = new Image();
-      const loadPromise = new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error("Failed to load QR as image."));
-        img.src = svgUrl;
-      });
-
-      await loadPromise;
-      // Some browsers (like Safari) benefit from explicit decoding before canvas drawing
-      if (typeof img.decode === "function") {
-        try {
-          await img.decode();
-        } catch { }
-      }
-
-      const size = 1024;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(svgUrl);
-        throw new Error("Canvas context not available.");
-      }
-
-      // Draw white background
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, size, size);
-      // Draw the QR image
-      ctx.drawImage(img, 0, 0, size, size);
-
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/png")
-      );
-
-      URL.revokeObjectURL(svgUrl);
-
-      if (!blob) throw new Error("Failed to create PNG blob.");
-      downloadBlob(`${qrBaseName}.png`, blob);
-      toast.success("QR code downloaded as PNG.");
-    } catch (e) {
-      toast.error(String(e?.message || e || "Failed to download PNG."));
-    }
-  };
-
-  const detailsView = editMode ? editDraft : details;
 
   return (
     <div className="p-6 space-y-6">
@@ -1195,52 +1185,15 @@ export default function BurialRecords() {
 
 
 
-              <div className="rounded-md border p-4 bg-white">
-                <div className="flex items-center gap-2 mb-3">
-                  <QrCode className="h-4 w-4 text-slate-600" />
-                  <div className="text-sm font-semibold text-slate-900">QR Code</div>
-                </div>
-
-                {isTruthyStr(qrText) ? (
-                  <div className="grid grid-cols-1 md:grid-cols-[220px,1fr] gap-4 items-start">
-                    <div
-                      ref={qrWrapRef}
-                      className="rounded-lg border bg-white p-4 flex items-center justify-center"
-                    >
-                      <QRCode
-                        value={qrText}
-                        size={180}
-                        bgColor="#FFFFFF"
-                        fgColor="#111827"
-                        level="M"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="text-xs text-slate-500">QR Actions</div>
-
-                      <div className="flex flex-wrap gap-2">
-
-
-
-
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={handleDownloadQrPng}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Download PNG
-                        </Button>
-                      </div>
-
-
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-500">No QR code available.</div>
-                )}
+              <div className="mt-4">
+                <QrPanel
+                  title="Grave QR Code"
+                  hasToken={Boolean(qrText)}
+                  dataUrl={qrDataUrl}
+                  downloadName={`grave-qr-${sanitizeFilename(detailsView?.plot_name || detailsView?.id || "plot")}.png`}
+                  hint="Print this QR and place it on the grave marker."
+                // onEditToken could be added if needed, but for now we follow the simple version
+                />
               </div>
             </div>
           ) : (

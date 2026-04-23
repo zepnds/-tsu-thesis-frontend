@@ -1871,7 +1871,7 @@ export default function Reservation() {
                               Waiting for Admin Approval
                             </div>
                             <div className="text-xs text-amber-800 mt-1">
-                              Your reservation is pending. Please wait while the admin reviews your request.
+                              Your reservation is currently pending. Please proceed with the admin payment so your request can be reviewed and confirmed.
                             </div>
                           </div>
                         ) : null}
