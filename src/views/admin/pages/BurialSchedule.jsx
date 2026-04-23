@@ -775,10 +775,10 @@ function BurialScheduleInner() {
       const arr = Array.isArray(body)
         ? body
         : Array.isArray(body?.data)
-        ? body.data
-        : Array.isArray(body?.items)
-        ? body.items
-        : [];
+          ? body.data
+          : Array.isArray(body?.items)
+            ? body.items
+            : [];
 
       setRows(arr);
     } catch (e) {
@@ -1059,18 +1059,18 @@ function BurialScheduleInner() {
             </div>
           ) : null}
 
-          <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {/* <div className="mt-3 grid gap-3 md:grid-cols-4">
             <MiniStat icon={CalendarDays} label="All" value={stats.all} />
             <MiniStat icon={Clock3} label="Pending" value={stats.pending} />
             <MiniStat icon={CheckCircle2} label="Confirmed" value={stats.confirmed} />
             <MiniStat icon={ShieldCheck} label="Completed" value={stats.completed} />
-          </div>
+          </div> */}
         </CardHeader>
 
         <CardContent className="space-y-4">
           {/* ✅ Calendar + Selected Day list */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <UpcomingBurialsCalendar
+            {/* <UpcomingBurialsCalendar
               upcomingByYmd={upcomingByYmd}
               selectedYmd={selectedYmd}
               onSelectYmd={onSelectYmd}
@@ -1178,11 +1178,10 @@ function BurialScheduleInner() {
                   </ScrollArea>
                 )}
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
-
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <div className="flex flex-col md:flex-row gap-3  items-stretch md:items-center justify-between">
             <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
@@ -1193,7 +1192,7 @@ function BurialScheduleInner() {
                   className="pl-8 w-full sm:w-[320px]"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              {/* <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -1205,7 +1204,7 @@ function BurialScheduleInner() {
                   <SelectItem value="rejected">Rejected</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
-              </Select>
+              </Select> */}
             </div>
 
             <div className="text-xs text-slate-500">
@@ -1219,7 +1218,7 @@ function BurialScheduleInner() {
           <Separator className="my-2" />
 
           {/* Table */}
-          <div className="rounded-xl border bg-white">
+          <div className="rounded-xl border bg-white mt-4">
             <div className="grid grid-cols-12 px-4 py-3 text-xs font-medium text-slate-500">
               <div className="col-span-3">Deceased Name</div>
               <div className="col-span-2">Date</div>

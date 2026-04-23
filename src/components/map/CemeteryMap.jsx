@@ -931,7 +931,7 @@ export default function CemeteryMap({
               options={{
                 drawingControl: true,
                 drawingControlOptions: {
-                  position: window.google?.maps?.ControlPosition?.TOP_CENTER || 1,
+                  position: window.google.maps.ControlPosition.TOP_CENTER,
                   drawingModes: ["rectangle", "polyline"],
                 },
                 rectangleOptions: {
@@ -1009,4 +1009,3 @@ export default function CemeteryMap({
     </>
   );
 }
-

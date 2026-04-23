@@ -149,10 +149,10 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
         const items = Array.isArray(json)
           ? json
           : Array.isArray(json?.data)
-          ? json.data
-          : json
-          ? [json]
-          : [];
+            ? json.data
+            : json
+              ? [json]
+              : [];
 
         setFamily(items);
       } catch (err) {
@@ -165,7 +165,7 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
       // ---- fetch reservations ----
       setLoadingReservations(true);
       try {
-        const body = await fetchJson(ENDPOINTS.myReservations, { headers });
+        const body = await fetchJson(ENDPOINTS.myDeceasedFamily, { headers });
         const list = Array.isArray(body) ? body : body?.data || [];
         setReservations(Array.isArray(list) ? list : []);
       } catch (err) {
@@ -186,35 +186,35 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
     headers,
   ]);
 
-  const handleDownloadQR = (_value, id) => {
-    try {
-      const svg = document.getElementById(`qr-${id}`);
-      if (!svg) return;
+  // const handleDownloadQR = (_value, id) => {
+  //   try {
+  //     const svg = document.getElementById(`qr-${id}`);
+  //     if (!svg) return;
 
-      const serializer = new XMLSerializer();
-      const svgData = serializer.serializeToString(svg);
-      const encoded = window.btoa(unescape(encodeURIComponent(svgData)));
+  //     const serializer = new XMLSerializer();
+  //     const svgData = serializer.serializeToString(svg);
+  //     const encoded = window.btoa(unescape(encodeURIComponent(svgData)));
 
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      const img = new Image();
+  //     const canvas = document.createElement("canvas");
+  //     const ctx = canvas.getContext("2d");
+  //     const img = new Image();
 
-      img.onload = function () {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        const pngFile = canvas.toDataURL("image/png");
-        const link = document.createElement("a");
-        link.download = `qr_${id}.png`;
-        link.href = pngFile;
-        link.click();
-      };
+  //     img.onload = function () {
+  //       canvas.width = img.width;
+  //       canvas.height = img.height;
+  //       ctx.drawImage(img, 0, 0);
+  //       const pngFile = canvas.toDataURL("image/png");
+  //       const link = document.createElement("a");
+  //       link.download = `qr_${id}.png`;
+  //       link.href = pngFile;
+  //       link.click();
+  //     };
 
-      img.src = "data:image/svg+xml;base64," + encoded;
-    } catch (err) {
-      console.error("QR download error:", err);
-    }
-  };
+  //     img.src = "data:image/svg+xml;base64," + encoded;
+  //   } catch (err) {
+  //     console.error("QR download error:", err);
+  //   }
+  // };
 
   const hasAnything =
     (family && family.length > 0) || (reservations && reservations.length > 0);
@@ -288,14 +288,14 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
                         </CardHeader>
 
                         <CardContent className="relative grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <InfoField label="Deceased Name" value={d.deceased_name} />
                           <InfoField label="Birth Date" value={formatDate(d.birth_date)} />
                           <InfoField label="Death Date" value={formatDate(d.death_date)} />
                           <InfoField label="Burial Date" value={formatDate(d.burial_date)} />
-                          <InfoField label="Plot Name" value={d.plot_name} />
-                          <InfoField label="Headstone Type" value={d.headstone_type} />
+                          <InfoField label="Plot ID" value={d.plot_id} />
                           <InfoField label="Memorial Text" value={d.memorial_text} italic />
 
-                          <div className="relative group overflow-hidden p-4 border border-emerald-100/50 rounded-lg bg-gradient-to-br from-slate-50/80 to-white/80 backdrop-blur hover:border-emerald-200 transition-all duration-300 flex flex-col items-center">
+                          {/* <div className="relative group overflow-hidden p-4 border border-emerald-100/50 rounded-lg bg-gradient-to-br from-slate-50/80 to-white/80 backdrop-blur hover:border-emerald-200 transition-all duration-300 flex flex-col items-center">
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/5 to-cyan-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                             <div className="relative text-xs font-semibold text-emerald-600 uppercase mb-3 self-start">
                               QR Token
@@ -318,7 +318,7 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
                             ) : (
                               <span className="relative text-slate-600">—</span>
                             )}
-                          </div>
+                          </div> */}
                         </CardContent>
                       </Card>
                     </div>
@@ -332,7 +332,7 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
             )}
 
             {/* ===================== RESERVATIONS ===================== */}
-            <Card className="rounded-2xl overflow-hidden border-white/60 bg-white/80 backdrop-blur shadow-lg">
+            {/* <Card className="rounded-2xl overflow-hidden border-white/60 bg-white/80 backdrop-blur shadow-lg">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg text-slate-900">My Reservations</CardTitle>
                 <div className="text-sm text-slate-600">
@@ -367,7 +367,7 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
                   ))
                 )}
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
         )}
       </DialogContent>

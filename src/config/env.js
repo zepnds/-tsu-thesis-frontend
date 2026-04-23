@@ -17,7 +17,7 @@ const DEFAULT_BACKEND_URL = "https://tsu-thesis-backend.onrender.com";
 export const ENV = {
   // Main API Endpoint
   API_BASE_URL: clean(import.meta.env.VITE_API_BASE_URL) || `${DEFAULT_BACKEND_URL}/api`,
-  
+
   // Base URL for Images/Static files from backend
   API_BASE_URL_IMAGE: clean(import.meta.env.VITE_API_BASE_URL_IMAGE) || DEFAULT_BACKEND_URL,
 

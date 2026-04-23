@@ -10,6 +10,9 @@ import {
   RefreshCcw,
   Search,
   Clock3,
+  Eye,
+  CheckCircle2,
+  FileText,
 } from "lucide-react";
 import {
   PieChart,
@@ -32,6 +35,15 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Toaster, toast } from "sonner";
 
 import { getAuth } from "@/utils/auth";
 
@@ -75,6 +87,10 @@ export default function Dashboard() {
   const [upcomingQuery, setUpcomingQuery] = useState("");
   const [upcomingStatus, setUpcomingStatus] = useState("all");
 
+  const [viewItem, setViewItem] = useState(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [burialSchedule, setBurialSchedule] = useState([]);
+
   useEffect(() => {
     fetchMetrics({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,6 +128,16 @@ export default function Dashboard() {
 
       const json = await res.json();
       setData(json);
+
+      // Fetch confirmed burial schedule
+      const scheduleRes = await fetch(`${API_BASE}/admin/burial-schedule`, {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+      if (scheduleRes.ok) {
+        const scheduleJson = await scheduleRes.json();
+        setBurialSchedule(scheduleJson);
+      }
+
       setLastUpdatedAt(new Date());
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -123,11 +149,52 @@ export default function Dashboard() {
     }
   }
 
+  async function handleConfirm(id) {
+    if (!id) return;
+    try {
+      setIsConfirming(true);
+      const auth = getAuth();
+      if (!auth?.token) throw new Error("Not authenticated");
+
+      const res = await fetch(`${API_BASE}/admin/burial-requests/${id}/confirm`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Failed to confirm request");
+      }
+
+      toast.success("Burial request approved successfully");
+      fetchMetrics(); // Refresh dashboard
+    } catch (err) {
+      console.error("[Dashboard] handleConfirm error:", err);
+      toast.error(err.message || "Failed to approve request");
+    } finally {
+      setIsConfirming(false);
+    }
+  }
+
   const counts = data?.counts || {};
   const plot_stats = data?.plot_stats || [];
-  const upcoming_approved = data?.upcoming_approved || [];
   const upcoming_pending = data?.upcoming_pending || [];
   const recent_maintenance = data?.recent_maintenance || [];
+
+  const combinedSchedule = useMemo(() => {
+    const pending = (upcoming_pending || []).map(item => ({ ...item, is_request: true }));
+    const confirmed = (burialSchedule || []).map(item => ({
+      ...item,
+      plot_code: item.plot?.plot_code || item.plot_code,
+      is_request: false
+    }));
+
+    return [...pending, ...confirmed].sort((a, b) => {
+      const dateA = new Date(a.scheduled_date || a.burial_date || 0);
+      const dateB = new Date(b.scheduled_date || b.burial_date || 0);
+      return dateA - dateB;
+    });
+  }, [upcoming_pending, burialSchedule]);
 
   const chartData = useMemo(() => {
     return (plot_stats || []).map((item) => {
@@ -312,24 +379,19 @@ export default function Dashboard() {
           </CardHeader>
 
           <CardContent className="flex-1">
-            <Tabs defaultValue="approved" className="h-full flex flex-col">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="approved">Approved</TabsTrigger>
-                <TabsTrigger value="pending">Pending</TabsTrigger>
-
-              </TabsList>
-
-              <TabsContent value="approved" className="mt-0">
-                <ScheduleTable items={upcoming_approved} emptyText="No approved burials scheduled." />
-              </TabsContent>
-
-              <TabsContent value="pending" className="mt-0">
-                <ScheduleTable items={upcoming_pending} emptyText="No pending burial requests." />
-              </TabsContent>
-            </Tabs>
+            <ScheduleTable
+              items={combinedSchedule}
+              emptyText="No burials scheduled."
+              onView={setViewItem}
+              onConfirm={(id, is_request) => is_request ? handleConfirm(id) : null}
+              isConfirming={isConfirming}
+            />
           </CardContent>
         </Card>
       </div>
+
+      <ViewModal item={viewItem} onOpenChange={(o) => !o && setViewItem(null)} />
+      <Toaster richColors />
 
       {/* Recent Maintenance */}
       <Card>
@@ -472,7 +534,7 @@ function PriorityBadge({ priority }) {
   );
 }
 
-function ScheduleTable({ items, emptyText }) {
+function ScheduleTable({ items, emptyText, onView, onConfirm, isConfirming }) {
   if (!items?.length) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center border rounded-lg bg-slate-50/50">
@@ -490,6 +552,7 @@ function ScheduleTable({ items, emptyText }) {
             <TableHead className="font-semibold">Deceased</TableHead>
             <TableHead className="font-semibold">Schedule</TableHead>
             <TableHead className="font-semibold">Plot</TableHead>
+            <TableHead className="font-semibold text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -509,13 +572,103 @@ function ScheduleTable({ items, emptyText }) {
                 </div>
               </TableCell>
               <TableCell className="text-xs text-slate-600 font-mono">
-                {item.plot_code || "N/A"}
+                {item.plot_id || "N/A"}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={() => onView?.(item)}
+                    title="View Details"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                    onClick={() => onConfirm(item.id, true)}
+                    disabled={isConfirming}
+                    title="Approve Request"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </Button>
+
+                </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function ViewModal({ item, onOpenChange }) {
+  const open = !!item;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Burial Schedule</DialogTitle>
+          <DialogDescription>
+            Detailed information for the scheduled burial.
+          </DialogDescription>
+        </DialogHeader>
+
+        {item && (
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Deceased</Label>
+              <div className="col-span-2 font-medium">{item.deceased_name}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Plot ID</Label>
+              <div className="col-span-2 font-mono text-sm">{item.plot_id || item.plot?.plot_code || "N/A"}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Date</Label>
+              <div className="col-span-2">{safeDateLabel(item.scheduled_date || item.burial_date)}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Time</Label>
+              <div className="col-span-2">{item.scheduled_time || "TBD"}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Label className="text-muted-foreground">Status</Label>
+              <div className="col-span-2 uppercase text-xs font-bold tracking-wider">
+                <StatusBadge status={item.status} />
+              </div>
+            </div>
+
+            {(item.family_contact_name || item.requester) && (
+              <div className="grid grid-cols-3 gap-2">
+                <Label className="text-muted-foreground">Contact</Label>
+                <div className="col-span-2 text-sm">
+                  {item.family_contact_name || item.requester?.first_name ? `${item.requester.first_name} ${item.requester.last_name || ""}` : item.requester?.username || "—"}
+                  {(item.family_contact_phone || item.requester?.phone) && (
+                    <div className="text-muted-foreground">{item.family_contact_phone || item.requester?.phone}</div>
+                  )}
+                  {item.requester?.email && (
+                    <div className="text-muted-foreground text-xs">{item.requester.email}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

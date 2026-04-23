@@ -455,7 +455,10 @@ export default function Inquire() {
 
   const auth = useMemo(() => readAuth(), []);
   const currentUser = auth?.user || {};
-  const token = getToken(auth);
+  const token = useMemo(() => getToken(auth), [auth]);
+  const userId = auth?.user?.id;
+
+  console.log("userId", userId)
 
   const role = String(currentUser?.role || "").toLowerCase();
   const isVisitorLoggedIn = !!token && role === "visitor" && !!currentUser?.id;
@@ -735,7 +738,7 @@ export default function Inquire() {
       setExternalSearchError("");
 
       const urls = [
-        `${API_BASE}/visitor/burial-records?q=${encodeURIComponent(q)}&limit=10`,
+        `${API_BASE}/visitor/my-deceased-family-grave?userId=${encodeURIComponent(userId)}&plotId=${encodeURIComponent(externalSearchQ)}`,
       ];
 
       const { body } = await fetchFirstOk(urls, { headers: headersAuth });
@@ -876,6 +879,8 @@ export default function Inquire() {
         }
 
         const maintenanceNoteParts = [String(maintenanceForm.description || "").trim()];
+        const grave_id = selectedSearchRecord?.id || null;
+
         if (linkedPlotId) {
           maintenanceNoteParts.push(`Linked plot ID: ${String(linkedPlotId)}`);
         }
@@ -890,11 +895,14 @@ export default function Inquire() {
 
         const payload = {
           deceased_name: dn,
+          request_type: "Maintenance",
           description: maintenanceNoteParts.filter(Boolean).join("\n"),
           priority: maintenanceForm.priority,
           preferred_date: maintenanceForm.preferredDate,
           preferred_time: maintenanceForm.preferredTime,
           family_contact: currentUser.id,
+          plot_id: linkedPlotId ? String(linkedPlotId) : null,
+          grave_id: grave_id ? String(grave_id) : null,
         };
 
         const url = `${API_BASE}/visitor/request-maintenance`;
@@ -1262,7 +1270,7 @@ export default function Inquire() {
 
       <div className="mx-auto w-full max-w-6xl space-y-4">
         {/* Header / Hero */}
-        <Card className="border-white/60 bg-white/75 backdrop-blur shadow-lg overflow-hidden">
+        <Card vclassName="border-white/60 bg-white/75 backdrop-blur shadow-lg overflow-hidden">
           <div className="p-6 md:p-8">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
               <div className="space-y-2">
@@ -1380,71 +1388,73 @@ export default function Inquire() {
               <form className="space-y-5" onSubmit={handleSubmit}>
                 {/* Deceased name */}
                 <div className="space-y-2">
-                  <div className="grid grid-cols-6">
-                    <div className="col-span-1 w-full">
-                      <Label>Select Plot</Label>
-                      <Select
-                        value={selectedPlot}
-                        onValueChange={(val) => {
-                          const key = nameKey(val);
-                          const pid = deceasedNameToPlotId.get(key) || null;
-                          setSelectedPlot(val);
-                          setManualPlotId(String(pid) || null);
-                          setMsg({ type: "ok", text: `Plot #${String(pid)} linked from map.` });
-                          setPrefillReservationId(null);
-                          setSelectedSearchRecord(null);
+                  {requestType !== "maintenance" ? (
+                    <div className="grid grid-cols-6">
+                      <div className="col-span-1 w-full">
+                        <Label>Select Plot</Label>
+                        <Select
+                          value={selectedPlot}
+                          onValueChange={(val) => {
+                            const key = nameKey(val);
+                            const pid = deceasedNameToPlotId.get(key) || null;
+                            setSelectedPlot(val);
+                            setManualPlotId(String(pid) || null);
+                            setMsg({ type: "ok", text: `Plot #${String(pid)} linked from map.` });
+                            setPrefillReservationId(null);
+                            setSelectedSearchRecord(null);
 
-                          // ✅ Scroll to map so user sees the zoom
-                          if (pid != null) {
-                            setTimeout(() => scrollToMap(), 150);
-                          }
-                        }}
-                        disabled={
-                          !isVisitorLoggedIn ||
-                          submitting ||
-                          namesLoading ||
-                          deceasedOptions.length === 0
-                        }
-                      >
-                        <SelectTrigger className="bg-white/70">
-                          <SelectValue
-                            placeholder={
-                              namesLoading
-                                ? "Loading your deceased names…"
-                                : deceasedOptions.length
-                                  ? "Select from your deceased names"
-                                  : "No deceased names found"
+                            // ✅ Scroll to map so user sees the zoom
+                            if (pid != null) {
+                              setTimeout(() => scrollToMap(), 150);
                             }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {deceasedOptions.map((o) => (
-                            <SelectItem key={o.name} value={o.name}>
-                              {o.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {namesError && <p className="text-xs text-rose-600">{namesError}</p>}
+                          }}
+                          disabled={
+                            !isVisitorLoggedIn ||
+                            submitting ||
+                            namesLoading ||
+                            deceasedOptions.length === 0
+                          }
+                        >
+                          <SelectTrigger className="bg-white/70">
+                            <SelectValue
+                              placeholder={
+                                namesLoading
+                                  ? "Loading your deceased names…"
+                                  : deceasedOptions.length
+                                    ? "Select from your deceased names"
+                                    : "No deceased names found"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {deceasedOptions.map((o) => (
+                              <SelectItem key={o.name} value={o.name}>
+                                {o.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {namesError && <p className="text-xs text-rose-600">{namesError}</p>}
+                      </div>
+                      <div className="col-span-5">
+                        <Label>Deceased Name</Label>
+                        <Input
+                          type="text"
+                          value={deceasedName}
+                          onChange={(e) => {
+                            const v = e.target.value || "";
+                            setDeceasedName(v);
+                            setSelectedName("");
+                            setPrefillReservationId(null);
+                            setSelectedSearchRecord(null);
+                          }}
+                          placeholder="Or type full name"
+                          disabled={!isVisitorLoggedIn || submitting}
+                          className="bg-white/70"
+                        />
+                      </div>
                     </div>
-                    <div className="col-span-5">
-                      <Label>Decase Name</Label>
-                      <Input
-                        type="text"
-                        value={deceasedName}
-                        onChange={(e) => {
-                          const v = e.target.value || "";
-                          setDeceasedName(v);
-                          setSelectedName("");
-                          setPrefillReservationId(null);
-                          setSelectedSearchRecord(null);
-                        }}
-                        placeholder="Or type full name"
-                        disabled={!isVisitorLoggedIn || submitting}
-                        className="bg-white/70"
-                      />
-                    </div>
-                  </div>
+                  ) : null}
                   {requestType === "maintenance" ? (
                     <div className="rounded-2xl border bg-white/60 p-4 space-y-3">
                       <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -1452,27 +1462,7 @@ export default function Inquire() {
                         Maintenance lookup
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <Button
-                          type="button"
-                          variant={maintenanceLookupMode === "family" ? "default" : "outline"}
-                          className="justify-start"
-                          onClick={() => setMaintenanceLookupMode("family")}
-                          disabled={!isVisitorLoggedIn || submitting}
-                        >
-                          Select from my burial-family list
-                        </Button>
 
-                        <Button
-                          type="button"
-                          variant={maintenanceLookupMode === "search" ? "default" : "outline"}
-                          className="justify-start"
-                          onClick={() => setMaintenanceLookupMode("search")}
-                          disabled={!isVisitorLoggedIn || submitting}
-                        >
-                          Search a buried plot
-                        </Button>
-                      </div>
 
                       {maintenanceLookupMode === "family" ? (
                         <p className="text-xs text-slate-600">
