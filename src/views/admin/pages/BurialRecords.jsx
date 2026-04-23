@@ -19,6 +19,7 @@ import {
   Download,
   Copy,
   Save,
+  Plus,
 } from "lucide-react";
 
 // shadcn/ui
@@ -178,7 +179,7 @@ function normalizePlotRow(r) {
   if (!r) return null;
 
   // Handle nested structure { plot, grave } from admin/plot/:id
-  const data = (r.plot || r.grave) ? { ...r.plot, ...r.grave } : r;
+  const data = (r.plot || r.grave) ? { ...r, ...r.plot, ...r.grave } : r;
 
   const status = data?.status ?? data?.plot_status ?? data?.plotStatus ?? null;
 
@@ -389,6 +390,8 @@ export default function BurialRecords() {
       editPlot: `${API_BASE}/admin/edit-plot`,
       deletePlot: (idOrUid) =>
         `${API_BASE}/admin/delete-plot/${encodeURIComponent(idOrUid)}`,
+      addBurialRecord: `${API_BASE}/admin/burial-records`,
+      listAllPlots: `${API_BASE}/admin/plots`,
     }),
     []
   );
@@ -415,6 +418,23 @@ export default function BurialRecords() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editDraft, setEditDraft] = useState(null);
+
+  // --- Create Modal State ---
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [allPlots, setAllPlots] = useState([]);
+  const [plotsLoading, setPlotsLoading] = useState(false);
+  const [createDraft, setCreateDraft] = useState({
+    plot_id: "",
+    deceased_name: "",
+    birth_date: "",
+    death_date: "",
+    burial_date: "",
+    family_contact: "",
+    epitaph: "",
+    headstone_type: "",
+    memorial_text: "",
+  });
 
   const fetchAny = useCallback(
     async (url, opts = {}) => {
@@ -684,6 +704,64 @@ export default function BurialRecords() {
     }
   };
 
+  const fetchPlots = async () => {
+    setPlotsLoading(true);
+    try {
+      const body = await fetchAny(ENDPOINTS.listAllPlots);
+      const list = extractPlotRows(body);
+      setAllPlots(Array.isArray(list) ? list : []);
+    } catch (e) {
+      console.error("Failed to fetch plots:", e);
+      toast.error("Failed to load plots for selection.");
+    } finally {
+      setPlotsLoading(false);
+    }
+  };
+
+  const handleOpenCreate = () => {
+    setCreateDraft({
+      plot_id: "",
+      deceased_name: "",
+      birth_date: "",
+      death_date: "",
+      burial_date: "",
+      family_contact: "",
+      epitaph: "",
+      headstone_type: "",
+      memorial_text: "",
+    });
+    setCreateOpen(true);
+    fetchPlots();
+  };
+
+  const handleCreateDraftChange = (field, value) => {
+    setCreateDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleCreate = async () => {
+    if (!createDraft.plot_id || !createDraft.deceased_name) {
+      toast.error("Plot and Deceased Name are required.");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      await fetchAny(ENDPOINTS.addBurialRecord, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createDraft),
+      });
+
+      toast.success("Burial record created successfully.");
+      setCreateOpen(false);
+      load();
+    } catch (e) {
+      toast.error(String(e?.message || e));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleCopyQr = () => {
     // Handled by QrPanel
   };
@@ -712,6 +790,11 @@ export default function BurialRecords() {
               className={["mr-2 h-4 w-4", loading ? "animate-spin" : ""].join(" ")}
             />
             Refresh
+          </Button>
+
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleOpenCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Record
           </Button>
         </div>
       </div>
@@ -892,7 +975,7 @@ export default function BurialRecords() {
 
                         <TableCell>
                           <div className="text-sm font-medium text-slate-900">
-                            {r?.person_full_name ?? "—"}
+                            {r?.deceased_name ?? "—"}
                           </div>
                         </TableCell>
 
@@ -1221,6 +1304,142 @@ export default function BurialRecords() {
                 Refresh list
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Create Burial Record Modal --- */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Burial Record</DialogTitle>
+            <DialogDescription>
+              Add a new deceased record and link it to an available plot.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Select Plot *</Label>
+                <Select
+                  value={createDraft.plot_id}
+                  onValueChange={(v) => handleCreateDraftChange("plot_id", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={plotsLoading ? "Loading plots..." : "Choose a plot"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allPlots
+                      .filter((p) => p.status === "available" || p.status === null)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.plot_name || p.plot_code || `Plot ${p.id}`} ({p.status || "available"})
+                        </SelectItem>
+                      ))}
+                    {allPlots.filter((p) => p.status === "available" || p.status === null).length === 0 && !plotsLoading && (
+                      <div className="p-2 text-sm text-muted-foreground text-center">
+                        No available plots found
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Deceased Name *</Label>
+                <Input
+                  placeholder="Full Name"
+                  value={createDraft.deceased_name}
+                  onChange={(e) => handleCreateDraftChange("deceased_name", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Date of Birth</Label>
+                <Input
+                  type="date"
+                  value={createDraft.birth_date}
+                  onChange={(e) => handleCreateDraftChange("birth_date", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Date of Death</Label>
+                <Input
+                  type="date"
+                  value={createDraft.death_date}
+                  onChange={(e) => handleCreateDraftChange("death_date", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Burial Date</Label>
+                <Input
+                  type="date"
+                  value={createDraft.burial_date}
+                  onChange={(e) => handleCreateDraftChange("burial_date", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Family Contact / Next of Kin</Label>
+              <Input
+                placeholder="Name or Phone"
+                value={createDraft.family_contact}
+                onChange={(e) => handleCreateDraftChange("family_contact", e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Headstone Type</Label>
+                <Input
+                  placeholder="e.g. Marble, Granite"
+                  value={createDraft.headstone_type}
+                  onChange={(e) => handleCreateDraftChange("headstone_type", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Epitaph</Label>
+                <Input
+                  placeholder="Short inscription"
+                  value={createDraft.epitaph}
+                  onChange={(e) => handleCreateDraftChange("epitaph", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Memorial Text / Notes</Label>
+              <Textarea
+                placeholder="Additional details..."
+                className="min-h-[80px]"
+                value={createDraft.memorial_text}
+                onChange={(e) => handleCreateDraftChange("memorial_text", e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleCreate}
+              disabled={creating}
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Record"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
