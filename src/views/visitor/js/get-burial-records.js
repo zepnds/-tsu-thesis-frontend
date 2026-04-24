@@ -60,7 +60,7 @@ export default async function fetchBurialRecords(opts = {}) {
   // cache buster to avoid proxy/browser 304 reuse
   params.set("_ts", String(Date.now()));
 
-  const url = `${API_BASE}/visitor/burial-records?${params.toString()}`;
+  const url = `${API_BASE}/visitor/graves?${params.toString()}`;
 
   const headers = {
     Accept: "application/json",
