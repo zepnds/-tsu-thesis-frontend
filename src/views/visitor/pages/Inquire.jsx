@@ -860,15 +860,21 @@ export default function Inquire() {
 
     setMsg({ type: "", text: "" });
 
-    const dn = String(deceasedName || "").trim();
-    if (!dn) {
-      setMsg({ type: "error", text: "Please enter/select the deceased name." });
-      return;
-    }
-
+    const dn = String(selectedName || "").trim();
+    const selectedPlotRecords = deceasedOptions.find((option) => option.id === linkedPlotId);
+    console.log("selectedPlotRecords", selectedPlotRecords);
     setSubmitting(true);
     try {
+
       if (requestType === "maintenance") {
+        if (selectedPlotRecords == null || undefined) {
+          setMsg({ type: "error", text: "You must be the proper relative or beneficiary of the plot to request a maintenance." });
+          return;
+        }
+        if (!dn) {
+          setMsg({ type: "error", text: "Deceased name is required." });
+          return;
+        }
         if (!String(maintenanceForm.description || "").trim()) {
           setMsg({ type: "error", text: "Description is required." });
           return;
@@ -926,10 +932,10 @@ export default function Inquire() {
 
         await loadMySchedule();
       } else {
-        if (!burialForm.birthDate || !burialForm.deathDate || !burialForm.burialDate) {
+        if (!dn || !burialForm.birthDate || !burialForm.deathDate || !burialForm.burialDate) {
           setMsg({
             type: "error",
-            text: "Birth date, death date, and burial date are required.",
+            text: "Deceased name, birth date, death date, and burial date are required.",
           });
           return;
         }
@@ -1397,6 +1403,7 @@ export default function Inquire() {
                           onValueChange={(val) => {
                             const key = nameKey(val);
                             const pid = deceasedNameToPlotId.get(key) || null;
+                            setDeceasedName(val);
                             setSelectedPlot(val);
                             setManualPlotId(String(pid) || null);
                             setMsg({ type: "ok", text: `Plot #${String(pid)} linked from map.` });
@@ -1437,14 +1444,13 @@ export default function Inquire() {
                         {namesError && <p className="text-xs text-rose-600">{namesError}</p>}
                       </div>
                       <div className="col-span-5">
-                        <Label>Deceased Name</Label>
+                        <Label>Deceased Name (required)</Label>
                         <Input
                           type="text"
-                          value={deceasedName}
+                          value={selectedName}
                           onChange={(e) => {
                             const v = e.target.value || "";
-                            setDeceasedName(v);
-                            setSelectedName("");
+                            setSelectedName(v);
                             setPrefillReservationId(null);
                             setSelectedSearchRecord(null);
                           }}
@@ -1473,7 +1479,7 @@ export default function Inquire() {
                             type="text"
                             value={externalSearchQ}
                             onChange={(e) => setExternalSearchQ(e.target.value)}
-                            placeholder="Search buried person or plot"
+                            placeholder="Search by plot id"
                             disabled={!isVisitorLoggedIn || submitting}
                             className="bg-white/70"
                           />
@@ -1652,14 +1658,14 @@ export default function Inquire() {
                   </>
                 ) : (
                   <div className="rounded-2xl border bg-white/60 p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 ">
                       <ClipboardList className="h-4 w-4 text-emerald-600" />
                       Burial details
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1- md:grid-cols-3 gap-3">
                       <div className="space-y-2">
-                        <Label>Birth Date</Label>
+                        <Label className="whitespace-nowrap">Birth Date (required)</Label>
                         <Input
                           type="date"
                           value={burialForm.birthDate}
@@ -1681,7 +1687,7 @@ export default function Inquire() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Death Date</Label>
+                        <Label className="whitespace-nowrap">Death Date (required)</Label>
                         <Input
                           type="date"
                           value={burialForm.deathDate}
@@ -1700,7 +1706,7 @@ export default function Inquire() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Burial Date</Label>
+                        <Label className="whitespace-nowrap">Burial Date (required)</Label>
                         <Input
                           type="date"
                           value={burialForm.burialDate}
@@ -1786,7 +1792,7 @@ export default function Inquire() {
                   </Button>
                 ) : null}
 
-                <Button variant="outline" onClick={() => setManualPlotId(null)}>
+                <Button variant="outline" onClick={() => { setManualPlotId(null) }}>
                   Clear manual selection
                 </Button>
               </div>
