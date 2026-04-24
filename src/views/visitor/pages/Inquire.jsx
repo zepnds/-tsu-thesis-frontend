@@ -1574,22 +1574,7 @@ export default function Inquire() {
                     </span>
                   </div>
 
-                  {/* Buttons */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button asChild variant="outline" className="gap-2">
-                      <NavLink to="/visitor/reservation">
-                        <MapPin className="h-4 w-4" />
-                        Reservation
-                      </NavLink>
-                    </Button>
 
-                    <Button asChild variant="secondary" className="gap-2">
-                      <NavLink to="/visitor/reservation?open=relative&returnTo=/visitor/inquire">
-                        <Users className="h-4 w-4" />
-                        Add Relative
-                      </NavLink>
-                    </Button>
-                  </div>
 
                   {!linkedPlotId ? (
                     <p className="text-[11px] text-slate-500">
