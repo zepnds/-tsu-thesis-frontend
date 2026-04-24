@@ -16,13 +16,13 @@ export default defineConfig({
     proxy: {
       "/api": {
         // target: "https://tsu-thesis-backend.onrender.com",
-        target: "http://localhost:9000",
+        target: "http://localhost:9002",
         changeOrigin: true,
         secure: false,
       },
       "/uploads": {
         // target: "https://tsu-thesis-backend.onrender.com",
-        target: "http://localhost:9000",
+        target: "http://localhost:9002",
         changeOrigin: true,
         secure: false,
       },
