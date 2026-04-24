@@ -147,7 +147,12 @@ async function fetchPlotCenterById(plotId) {
 
     const json = await res.json().catch(() => null);
     const feature = json?.data?.feature || json?.data || json?.feature || json;
-    const geom = feature?.geometry || feature?.geom || null;
+    const geom =
+      feature?.geometry ||
+      feature?.coordinates ||
+      feature?.geom ||
+      feature?.plot_boundary ||
+      null;
     return centerOfGeometry(geom);
   } catch (e) {
     console.warn("fetchPlotCenterById failed:", e);
@@ -1164,6 +1169,17 @@ export default function SearchForDeceased() {
         ? { lat: parsed.lat, lng: parsed.lng }
         : null;
 
+    // Fallback 1: Try already-loaded plot relation from the search payload
+    if (!coords && row?.plot) {
+      const g =
+        row.plot.geometry ||
+        row.plot.coordinates ||
+        row.plot.geom ||
+        row.plot.plot_boundary;
+      if (g) coords = centerOfGeometry(g);
+    }
+
+    // Fallback 2: Fetch from API if still no coords
     if (!coords && row?.plot_id) {
       coords = await fetchPlotCenterById(row.plot_id);
     }
