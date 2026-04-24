@@ -742,6 +742,7 @@ export default function Inquire() {
       ];
 
       const { body } = await fetchFirstOk(urls, { headers: headersAuth });
+      console.log("body", body);
       const rows = extractArray(body);
       setExternalSearchRows(rows);
     } catch (e) {

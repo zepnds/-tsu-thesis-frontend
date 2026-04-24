@@ -133,6 +133,8 @@ export default function Dashboard() {
       const scheduleRes = await fetch(`${API_BASE}/admin/burial-schedule`, {
         headers: { Authorization: `Bearer ${auth.token}` },
       });
+
+      console.log("scheduleRes", scheduleRes)
       if (scheduleRes.ok) {
         const scheduleJson = await scheduleRes.json();
         setBurialSchedule(scheduleJson);
