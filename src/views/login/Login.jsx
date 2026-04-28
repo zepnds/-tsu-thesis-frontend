@@ -1,10 +1,9 @@
 // frontend/src/views/login/Login.jsx
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { postLogin } from "./js/login";
 import { postSignup, postSendOtp } from "./js/signup";
 
-import { ENV } from "../../config/env";
 
 // shadcn/ui
 import { Button } from "../../components/ui/button";
@@ -43,21 +42,24 @@ export default function Login() {
     first_name: "",
     last_name: "",
     phone: "",
+    address: "",
   });
 
   // OTP state
   const [otpDialogOpen, setOtpDialogOpen] = useState(false);
   const [otpInput, setOtpInput] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
-
+  const [error, setError] = useState({})
   const onChange = (e) => {
     setMsg({ type: "", text: "" });
+    setError((prev) => ({ ...prev, [e.target.name]: "" }));
     setFormData((s) => ({ ...s, [e.target.name]: e.target.value }));
   };
 
   const toggleForm = () => {
     setIsLogin((v) => !v);
     setMsg({ type: "", text: "" });
+    setError({});
     setFormData({
       usernameOrEmail: "",
       password: "",
@@ -67,6 +69,7 @@ export default function Login() {
       first_name: "",
       last_name: "",
       phone: "",
+      address: "",
     });
   };
 
@@ -74,7 +77,7 @@ export default function Login() {
     setSendingOtp(true);
     setMsg({ type: "", text: "" });
     try {
-      await postSendOtp({ email: toEmail, username: toUsername });
+      await postSendOtp({ email: toEmail, username: toUsername, phone: formData.phone.trim(), setError });
 
       setOtpInput("");
       setOtpDialogOpen(true);
@@ -83,6 +86,7 @@ export default function Login() {
         text: "We sent a 6-digit code to your email. Enter it below to continue.",
       });
     } catch (err) {
+      console.log("error", err)
       setMsg({
         type: "error",
         text:
@@ -112,6 +116,7 @@ export default function Login() {
         const { next } = await postLogin({
           usernameOrEmail: formData.usernameOrEmail.trim(),
           password: formData.password,
+          setError
         });
         nav(next);
       } else {
@@ -154,15 +159,17 @@ export default function Login() {
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
         phone: formData.phone.trim(),
-        address: null,
+        address: formData.address.trim(),
         otp: otpInput.trim(),
+        setError
       });
 
       if (token) {
         nav(next);
       } else {
-        setMsg({ type: "ok", text: "Account created! Please sign in." });
+        setMsg({ type: "ok", text: "Account created successfully! Please sign in with your credentials." });
         setIsLogin(true);
+        setError({});
         setFormData({
           usernameOrEmail: formData.email,
           password: "",
@@ -172,15 +179,19 @@ export default function Login() {
           first_name: "",
           last_name: "",
           phone: "",
+          address: "",
         });
       }
       setOtpDialogOpen(false);
     } catch (err) {
+      console.log("error", err.message)
       setMsg({ type: "error", text: err?.message || "Sign up failed." });
     } finally {
       setLoading(false);
     }
   }
+
+
 
   async function resendOtp() {
     if (!formData.email) return;
@@ -216,15 +227,12 @@ export default function Login() {
           <CardContent className="relative">
             {msg.text ? (
               <Alert
-                className={`mb-4 backdrop-blur shadow-md ${
-                  msg.type === "error"
-                    ? "bg-rose-50/90 border-rose-200"
-                    : "bg-emerald-50/90 border-emerald-200"
-                }`}
+                className={`mb-4 backdrop-blur shadow-md ${msg.type === "error"
+                  ? "bg-rose-50/90 border-rose-200 text-rose-700"
+                  : "bg-emerald-50/90 border-emerald-200 text-emerald-700"
+                  }`}
               >
-                <AlertDescription
-                  className={msg.type === "error" ? "text-rose-700" : "text-emerald-700"}
-                >
+                <AlertDescription className="font-medium text-center">
                   {msg.text}
                 </AlertDescription>
               </Alert>
@@ -243,7 +251,9 @@ export default function Login() {
                       onChange={onChange}
                       placeholder="johndoe"
                       autoComplete="username"
+                      className={error.username ? "border-rose-400 focus-visible:ring-rose-400" : ""}
                     />
+                    {error.username && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.username}</p>}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -257,7 +267,9 @@ export default function Login() {
                         onChange={onChange}
                         placeholder="John"
                         autoComplete="given-name"
+                        className={error.first_name ? "border-rose-400 focus-visible:ring-rose-400" : ""}
                       />
+                      {error.first_name && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.first_name}</p>}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="last_name">Last Name</Label>
@@ -269,7 +281,9 @@ export default function Login() {
                         onChange={onChange}
                         placeholder="Doe"
                         autoComplete="family-name"
+                        className={error.last_name ? "border-rose-400 focus-visible:ring-rose-400" : ""}
                       />
+                      {error.last_name && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.last_name}</p>}
                     </div>
                   </div>
                 </>
@@ -287,22 +301,41 @@ export default function Login() {
                   onChange={onChange}
                   placeholder={isLogin ? "you@example.com or johndoe" : "you@example.com"}
                   autoComplete="email"
+                  className={(isLogin && error.usernameOrEmail) || (!isLogin && error.email) ? "border-rose-400 focus-visible:ring-rose-400" : ""}
                 />
+                {isLogin && error.usernameOrEmail && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.usernameOrEmail}</p>}
+                {!isLogin && error.email && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.email}</p>}
               </div>
 
               {!isLogin && (
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={onChange}
-                    placeholder="+63 912 345 6789"
-                    autoComplete="tel"
-                  />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={onChange}
+                      placeholder="+63 912 345 6789"
+                      autoComplete="tel"
+                      className={error.phone ? "border-rose-400 focus-visible:ring-rose-400" : ""}
+                    />
+                    {error.phone && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.phone}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Home Address</Label>
+                    <Input
+                      id="address"
+                      type="text"
+                      name="address"
+                      value={formData.address}
+                      onChange={onChange}
+                      placeholder="123 Street, City, Province"
+                      autoComplete="street-address"
+                    />
+                  </div>
+                </>
               )}
 
               <div className="space-y-2">
@@ -360,11 +393,11 @@ export default function Login() {
                   ? isLogin
                     ? "Signing in…"
                     : sendingOtp
-                    ? "Sending code…"
-                    : "Creating…"
+                      ? "Sending code…"
+                      : "Creating…"
                   : isLogin
-                  ? "Sign In"
-                  : "Create Account"}
+                    ? "Sign In"
+                    : "Create Account"}
               </Button>
             </form>
 
@@ -381,6 +414,7 @@ export default function Login() {
       </div>
 
       <Dialog open={otpDialogOpen} onOpenChange={setOtpDialogOpen}>
+
         <DialogContent className="sm:max-w-md bg-white/90 backdrop-blur border-white/60 shadow-2xl">
           <DialogHeader>
             <DialogTitle>Email Verification</DialogTitle>
@@ -404,7 +438,7 @@ export default function Login() {
               Code expires in 10 minutes. Check your spam folder if you don't see it.
             </p>
           </div>
-
+          {error.otp && <p className="text-[12px] text-rose-500 font-medium px-1 mt-0.5">{error.otp}</p>}
           <DialogFooter className="flex items-center justify-between gap-2">
             <Button
               type="button"

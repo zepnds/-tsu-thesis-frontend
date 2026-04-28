@@ -34,7 +34,7 @@ async function safeRead(res) {
   }
 }
 
-export async function postLogin({ usernameOrEmail, password }) {
+export async function postLogin({ usernameOrEmail, password, setError }) {
   const BASE = cleanBase(import.meta.env.VITE_API_BASE_URL);
   if (!BASE) throw new Error("Missing VITE_API_BASE_URL in frontend/.env");
 
@@ -55,19 +55,27 @@ export async function postLogin({ usernameOrEmail, password }) {
 
     const data = await safeRead(res);
 
-    if (!res.ok) {
+    if (!res.ok || data?.status === 'error') {
       const msg =
-        (data && typeof data === "object" && (data.error || data.message)) ||
+        (data && typeof data === "object" && (data.message || data.error)) ||
         (typeof data === "string" && data) ||
         `Login failed (${res.status})`;
+
+      if (data?.errorCode === 'INVALID_CREDENTIALS' && setError) {
+        setError(prev => ({ ...prev, usernameOrEmail: data.message }));
+      }
+
       const err = new Error(msg);
       err.status = res.status;
       err.data = data;
       throw err;
     }
 
-    const token = data?.token || null;
-    const user = data?.user || null;
+    // Handle ApiResponse wrapper
+    const payload = (data?.status === 'success' && data?.data) ? data.data : data;
+
+    const token = payload?.token || null;
+    const user = payload?.user || null;
 
     if (token && user) {
       setAuth({ token, user });
@@ -75,9 +83,6 @@ export async function postLogin({ usernameOrEmail, password }) {
 
     return { token, user, next: routeForRole(user?.role) };
   } catch (err) {
-    const msg = err?.message || String(err);
-    const e = new Error(`Login request failed.\nURL: ${url}\nReason: ${msg}`);
-    e.cause = err;
-    throw e;
+    throw err;
   }
 }

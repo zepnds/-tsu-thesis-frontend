@@ -34,7 +34,7 @@ async function safeRead(res) {
   }
 }
 
-export async function postSendOtp({ email, username }) {
+export async function postSendOtp({ email, username, phone, setError }) {
   const BASE = cleanBase(import.meta.env.VITE_API_BASE_URL);
   if (!BASE) throw new Error("Missing VITE_API_BASE_URL in frontend/.env");
 
@@ -47,24 +47,42 @@ export async function postSendOtp({ email, username }) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ email, username }),
+      body: JSON.stringify({ email, username, phone }),
     });
 
     const data = await safeRead(res);
+    console.log("res", JSON.stringify(data));
 
-    if (!res.ok) {
+    if (!res.ok || data?.status === 'error') {
       const msg =
-        (data && typeof data === "object" && (data.error || data.message)) ||
+        (data && typeof data === "object" && (data.message || data.error)) ||
         (typeof data === "string" && data) ||
         `Failed to send OTP (${res.status})`;
+
+      // If we have an errorCode, map it to a field error
+      if (data?.errorCode && setError) {
+        const fieldMap = {
+          EMAIL_ALREADY_REGISTERED: 'email',
+          USERNAME_ALREADY_TAKEN: 'username',
+          PHONE_ALREADY_REGISTERED: 'phone',
+          OTP_NOT_REQUESTED_OR_EXPIRED: "otp",
+          INVALID_OTP: "otp",
+          OTP_EXPIRED: "otp "
+        };
+        const field = fieldMap[data.errorCode];
+        if (field) {
+          setError(prev => ({ ...prev, [field]: data.message }));
+        }
+      }
+
       throw new Error(msg);
     }
     return data;
   } catch (err) {
+    console.log(err);
     const msg = err?.message || String(err);
-    const e = new Error(`OTP request failed: ${msg}`);
-    e.cause = err;
-    throw e;
+    // Don't wrap if it's already a clean error message
+    throw err;
   }
 }
 
@@ -77,6 +95,7 @@ export async function postSignup({
   phone,
   address,
   otp,
+  setError
 }) {
   const BASE = cleanBase(import.meta.env.VITE_API_BASE_URL);
   if (!BASE) throw new Error("Missing VITE_API_BASE_URL in frontend/.env");
@@ -85,52 +104,73 @@ export async function postSignup({
   const url = `${BASE}/auth/register`;
 
   try {
+    const _payload = {
+      username,
+      email,
+      password,
+      first_name,
+      last_name,
+      phone: phone || null,
+      address: address || null,
+      otp,
+    };
+
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        username,
-        email,
-        password,
-        first_name,
-        last_name,
-        phone: phone || null,
-        address: address || null,
-        otp,
-      }),
+      body: JSON.stringify(_payload),
+    }).catch(err => {
+      console.log("error", err)
+      throw err
     });
 
     const data = await safeRead(res);
 
-    if (!res.ok) {
+    if (!res.ok || data?.status === 'error') {
       const msg =
-        (data && typeof data === "object" && (data.error || data.message)) ||
+        (data && typeof data === "object" && (data.message || data.error)) ||
         (typeof data === "string" && data) ||
-        `Sign up failed (${res.status})`;
-      const err = new Error(msg);
-      err.status = res.status;
-      err.data = data;
-      throw err;
+        `Failed to register (${res.status})`;
+
+      // If we have an errorCode, map it to a field error
+      if (data?.errorCode && setError) {
+        const fieldMap = {
+          EMAIL_ALREADY_REGISTERED: 'email',
+          USERNAME_ALREADY_TAKEN: 'username',
+          PHONE_ALREADY_REGISTERED: 'phone',
+          OTP_NOT_REQUESTED_OR_EXPIRED: "otp",
+          INVALID_OTP: "otp",
+          OTP_EXPIRED: "otp "
+        };
+        const field = fieldMap[data.errorCode];
+        if (field) {
+          setError(prev => ({ ...prev, [field]: data.message }));
+        }
+      }
+
+      throw new Error(msg);
     }
 
-    // Supports:
-    //  - { user } (no token)
-    //  - { token, user }
-    const token = data?.token || null;
-    const user = data?.user || (data && typeof data === "object" ? data : null);
+
+
+    const user = data?.data || (data && typeof data === "object" ? data : null);
+    const token = data?.token || data?.data?.token || null;
 
     if (token && user) {
       setAuth({ token, user });
     }
 
-    const next = token && user ? routeForRole(user.role) : "/visitor/home";
+    const next = (token && user) ? routeForRole(user.role) : "/visitor/home";
     return { token, user, next };
+
   } catch (err) {
     // Network/CORS shows as "Failed to fetch"
     const msg = err?.message || String(err);
+    console.log("msg", msg)
+    console.log("err", err)
     const e = new Error(
       `Signup request failed.\nURL: ${url}\nReason: ${msg}`
     );
