@@ -540,6 +540,7 @@ export default function Inquire() {
     birthDate: "",
     deathDate: "",
     burialDate: "",
+    burialTime: "",
   });
   const [burialFile, setBurialFile] = useState(null);
   const [burialFilePreview, setBurialFilePreview] = useState(null);
@@ -740,7 +741,7 @@ export default function Inquire() {
       setExternalSearchError("");
 
       const urls = [
-        `${API_BASE}/visitor/my-deceased-family-grave?userId=${encodeURIComponent(userId)}&plotId=${encodeURIComponent(externalSearchQ)}`,
+        `${API_BASE}/visitor/my-deceased-family-grave?userId=${encodeURIComponent(userId)}&q=${encodeURIComponent(externalSearchQ)}`,
       ];
 
       const { body } = await fetchFirstOk(urls, { headers: headersAuth });
@@ -869,7 +870,7 @@ export default function Inquire() {
     setSubmitting(true);
     try {
       if (requestType === "maintenance") {
-        if (!dn) throw new Error("Deceased name is required.");
+        if (!linkedPlotIdAny) throw new Error("Plot selection is required. Please search for a plot or select one from the map.");
         if (!String(maintenanceForm.description || "").trim()) throw new Error("Description is required.");
         if (!maintenanceForm.preferredDate || !maintenanceForm.preferredTime) throw new Error("Preferred date and time are required.");
 
@@ -897,7 +898,7 @@ export default function Inquire() {
         });
 
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.message || `Request failed: ${res.status}`);
+        if (!res.ok || data?.status === "error") throw new Error(data?.message || `Request failed: ${res.status}`);
 
         setMsg({ type: "ok", text: "Maintenance request submitted successfully!" });
         setMaintenanceForm({ description: "", preferredDate: "", preferredTime: "", priority: "medium" });
@@ -925,6 +926,7 @@ export default function Inquire() {
         fd.append("birth_date", burialForm.birthDate);
         fd.append("death_date", burialForm.deathDate);
         fd.append("burial_date", burialForm.burialDate);
+        fd.append("burial_time", burialForm.burialTime);
         fd.append("family_contact", currentUser.id);
         fd.append("plot_id", String(plot_id));
         if (prefillReservationId) fd.append("reservation_id", String(prefillReservationId));
@@ -940,7 +942,7 @@ export default function Inquire() {
         if (!res.ok || data?.status === "error") throw new Error(data?.message || `Request failed: ${res.status}`);
 
         setMsg({ type: "ok", text: "Burial request submitted successfully!" });
-        setBurialForm({ birthDate: "", deathDate: "", burialDate: "" });
+        setBurialForm({ birthDate: "", deathDate: "", burialDate: "", burialTime: "" });
         setBurialFile(null);
         setBurialFilePreview(null);
         await loadMyBurialRequests();
@@ -1328,7 +1330,7 @@ export default function Inquire() {
                             </div>
                             <div className="rounded-xl bg-white/60 border p-2">
                               <div className="text-slate-500">Burial</div>
-                              <div className="font-medium">{r.burial_date || "—"}</div>
+                              <div className="font-medium">{r.burial_date || "—"} {r.burial_time || ""}</div>
                             </div>
                           </div>
                         </div>
@@ -1735,7 +1737,7 @@ export default function Inquire() {
                             type="text"
                             value={externalSearchQ}
                             onChange={(e) => setExternalSearchQ(e.target.value)}
-                            placeholder="Search by plot id"
+                            placeholder="Search by name or plot (e.g. A-1)"
                             disabled={!isVisitorLoggedIn || submitting}
                             className="bg-white/70"
                           />
@@ -1756,8 +1758,8 @@ export default function Inquire() {
                         ) : null}
 
                         {externalSearchRows.length ? (
-                          <div className="max-h-60 overflow-auto rounded-xl border bg-white">
-                            <div className="divide-y">
+                          <div className="max-h-60 overflow-auto rounded-xl border bg-white p-2">
+                            <div className="space-y-2">
                               {externalSearchRows.map((row, idx) => {
                                 const searchName = extractBurialSearchName(row) || "—";
                                 const searchPlotId = extractBurialSearchPlotId(row);
@@ -1765,22 +1767,26 @@ export default function Inquire() {
                                 return (
                                   <div
                                     key={`${searchPlotId || "row"}-${idx}`}
-                                    className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
+                                    className="flex items-center justify-between p-4 bg-white/50 hover:bg-white/80 transition-colors rounded-xl border border-emerald-100/50 shadow-sm"
                                   >
-                                    <div className="min-w-0">
-                                      <div className="font-medium text-slate-900">{searchName}</div>
-                                      <div className="text-xs text-slate-500">
-                                        Plot: {searchPlotLabel}
-                                        {searchPlotId != null ? ` (#${String(searchPlotId)})` : ""}
-                                      </div>
-                                      <div className="text-xs text-slate-500">
-                                        Birth: {row?.birth_date || "—"} • Death: {row?.death_date || "—"}
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-semibold text-slate-900">{searchName}</div>
+                                      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                                        <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                                          <MapPin className="h-3 w-3" />
+                                          Plot: {searchPlotLabel}
+                                          {searchPlotId != null ? ` (#${String(searchPlotId)})` : ""}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500">
+                                          {row?.death_date ? `Deceased: ${fmtDateLong(row.death_date)}` : "No death date"}
+                                        </div>
                                       </div>
                                     </div>
 
                                     <Button
                                       type="button"
                                       size="sm"
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-8"
                                       onClick={() => {
                                         const searchName = extractBurialSearchName(row) || "—";
                                         const searchPlotId = extractBurialSearchPlotId(row);
@@ -1798,7 +1804,7 @@ export default function Inquire() {
                                         });
                                       }}
                                     >
-                                      Use this
+                                      Select
                                     </Button>
                                   </div>
                                 );
@@ -1971,6 +1977,19 @@ export default function Inquire() {
                           onWheel={preventMouseWheelDateChange}
                           onChange={(e) =>
                             setBurialForm((f) => ({ ...f, burialDate: e.target.value }))
+                          }
+                          disabled={!isVisitorLoggedIn || submitting}
+                          className="bg-white/70"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="whitespace-nowrap">Burial Time (required)</Label>
+                        <Input
+                          type="time"
+                          value={burialForm.burialTime}
+                          onChange={(e) =>
+                            setBurialForm((f) => ({ ...f, burialTime: e.target.value }))
                           }
                           disabled={!isVisitorLoggedIn || submitting}
                           className="bg-white/70"
@@ -2150,14 +2169,23 @@ export default function Inquire() {
 
                     if (pid != null) {
                       setManualPlotId(String(pid));
-                      setMsg({ type: "ok", text: `Plot #${String(pid)} linked from map.` });
+                      const deceasedName = poly?.properties?.deceased_names || poly?.properties?.deceased_name;
+
+                      setMsg({ 
+                        type: "ok", 
+                        text: `Plot #${String(pid)} linked from map.${deceasedName ? ` Deceased: ${deceasedName}` : ""}` 
+                      });
 
                       // Auto-select dropdown if this plot belongs to a known deceased person
                       const found = deceasedOptions.find(o => String(o.plot_id) === String(pid));
                       if (found) {
                         setSelectedPlot(found.name);
+                        setSelectedName(found.name);
                       } else {
                         setSelectedPlot(""); // Clear if not found in pre-loaded list
+                        if (deceasedName) {
+                          setSelectedName(deceasedName);
+                        }
                       }
                     }
                   }}

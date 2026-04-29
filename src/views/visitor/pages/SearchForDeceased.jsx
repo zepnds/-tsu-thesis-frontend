@@ -1007,8 +1007,8 @@ export default function SearchForDeceased() {
           mapCoords,
           graph,
           {
-            userM: routeMode === "entrance" ? 35 : 25,
-            destM: 25,
+            userM: 0,
+            destM: 0,
             snapMaxM: 80,
             allowFallback: false,
           }
@@ -1670,8 +1670,8 @@ export default function SearchForDeceased() {
         path: routePath,
         options: {
           strokeColor: "#059669",
-          strokeOpacity: 0.95,
-          strokeWeight: 4,
+          strokeOpacity: 1,
+          strokeWeight: 8,
           zIndex: 999,
         },
       },

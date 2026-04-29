@@ -957,6 +957,30 @@ function BurialScheduleInner() {
     }
   };
 
+  const onReject = async (row) => {
+    const id = row?.id;
+    if (!id) return toast.error("Missing request id.");
+
+    if (!window.confirm(`Are you sure you want to reject the burial request for ${row.deceased_name || 'this request'}?`)) {
+      return;
+    }
+
+    try {
+      toast.message("Rejecting burial request...");
+      const res = await fetch(`${API_BASE}/admin/burial-requests/${encodeURIComponent(String(id))}/reject`, {
+        method: "POST",
+        headers: authHeaders({ Accept: "application/json" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || data?.error || `Failed: ${res.status}`);
+      toast.success("Request rejected successfully.");
+      await fetchRequests();
+    } catch (e) {
+      console.error("reject error:", e);
+      toast.error(e?.message || "Failed to reject request.");
+    }
+  };
+
   /* ==========================
      Upcoming burials data (Calendar)
      - Uses burial_requests rows as source
@@ -1319,6 +1343,17 @@ function BurialScheduleInner() {
                             title="Confirm"
                           >
                             <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                        )}
+
+                        {canConfirm && (
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            onClick={() => onReject(r)}
+                            title="Reject"
+                          >
+                            <XCircle className="h-4 w-4" />
                           </Button>
                         )}
                       </div>

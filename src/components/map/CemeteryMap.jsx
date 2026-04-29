@@ -253,6 +253,7 @@ const DEFAULT_MODAL_FIELDS = [
       );
     },
   },
+  { name: "deceased_names", label: "Buried", type: "text" },
   { name: "uid", label: "UID", type: "text" },
   { name: "plot_name", label: "Plot Name", type: "text" },
   { name: "status", label: "Status", type: "badge" },

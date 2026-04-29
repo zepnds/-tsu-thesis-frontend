@@ -270,8 +270,8 @@ export default function MyDeceasedFamily({ open, onOpenChange }) {
       date_of_birth: row.birth_date || row.date_of_birth || null,
       date_of_death: row.death_date || row.date_of_death || null,
       photo_url: row.photo_url ?? null,
-      lat: coords?.lat ?? CEMETERY_CENTER.lat,
-      lng: coords?.lng ?? CEMETERY_CENTER.lng,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
     };
 
     return JSON.stringify(payload);

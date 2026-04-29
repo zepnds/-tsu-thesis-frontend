@@ -430,6 +430,7 @@ export default function BurialRecords() {
     birth_date: "",
     death_date: "",
     burial_date: "",
+    burial_time: "",
     family_contact: "",
     epitaph: "",
     headstone_type: "",
@@ -583,6 +584,8 @@ export default function BurialRecords() {
           person_full_name: normalized?.person_full_name ?? "",
           date_of_birth: toDateInputValue(normalized?.date_of_birth),
           date_of_death: toDateInputValue(normalized?.date_of_death),
+          burial_date: toDateInputValue(normalized?.burial_date),
+          burial_time: normalized?.burial_time ?? "",
           next_of_kin_name: normalized?.next_of_kin_name ?? "",
           contact_phone: normalized?.contact_phone ?? "",
           contact_email: normalized?.contact_email ?? "",
@@ -653,6 +656,8 @@ export default function BurialRecords() {
         person_full_name: String(editDraft.person_full_name || "").trim() || null,
         date_of_birth: String(editDraft.date_of_birth || "").trim() || null,
         date_of_death: String(editDraft.date_of_death || "").trim() || null,
+        burial_date: String(editDraft.burial_date || "").trim() || null,
+        burial_time: String(editDraft.burial_time || "").trim() || null,
         next_of_kin_name: String(editDraft.next_of_kin_name || "").trim() || null,
         contact_phone: String(editDraft.contact_phone || "").trim() || null,
         contact_email: String(editDraft.contact_email || "").trim() || null,
@@ -1181,6 +1186,38 @@ export default function BurialRecords() {
                 </div>
 
                 <div className="rounded-md border p-3 bg-white">
+                  <Label className="text-xs text-slate-500">Burial Date</Label>
+                  {editMode ? (
+                    <Input
+                      className="mt-2"
+                      type="date"
+                      value={editDraft?.burial_date ?? ""}
+                      onChange={(e) => handleDraftChange("burial_date", e.target.value)}
+                    />
+                  ) : (
+                    <div className="font-medium mt-1">
+                      {formatDate(detailsView?.burial_date)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-md border p-3 bg-white">
+                  <Label className="text-xs text-slate-500">Burial Time</Label>
+                  {editMode ? (
+                    <Input
+                      className="mt-2"
+                      placeholder="e.g. 10:00 AM"
+                      value={editDraft?.burial_time ?? ""}
+                      onChange={(e) => handleDraftChange("burial_time", e.target.value)}
+                    />
+                  ) : (
+                    <div className="font-medium mt-1">
+                      {detailsView?.burial_time || "—"}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-md border p-3 bg-white">
                   <Label className="text-xs text-slate-500">Price</Label>
                   {editMode ? (
                     <Input
@@ -1379,6 +1416,14 @@ export default function BurialRecords() {
                   type="date"
                   value={createDraft.burial_date}
                   onChange={(e) => handleCreateDraftChange("burial_date", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Burial Time</Label>
+                <Input
+                  placeholder="e.g. 10:00 AM"
+                  value={createDraft.burial_time}
+                  onChange={(e) => handleCreateDraftChange("burial_time", e.target.value)}
                 />
               </div>
             </div>

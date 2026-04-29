@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   Clock4,
+  XCircle,
 } from "lucide-react";
 
 import { Toaster, toast } from "sonner";
@@ -258,6 +259,26 @@ export default function MaintenanceSchedules() {
     }
   }, []);
 
+  const handleReject = async (item) => {
+    if (!window.confirm(`Are you sure you want to reject/disapprove the maintenance request for ${item.deceased_name || 'this plot'}?`)) {
+      return;
+    }
+    try {
+      const url = `${API_BASE}/admin/maintenance/${encodeURIComponent(String(item.id))}/reject`;
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: authHeaders({ Accept: "application/json" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || data?.error || `Failed: ${res.status}`);
+      toast.success("Request rejected successfully.");
+      await fetchList();
+    } catch (e) {
+      console.error("reject error:", e);
+      toast.error(e?.message || "Failed to reject.");
+    }
+  };
+
   const fetchPlotsGeo = useCallback(async () => {
     try {
       const url = `${API_BASE}/plot/`;
@@ -295,6 +316,9 @@ export default function MaintenanceSchedules() {
           r.requester_name,
           r.assigned_staff_name,
           r.family_contact,
+          r.plot_id,
+          r.plot?.plot_code,
+          r.plot?.plot_name,
         ]
           .filter(Boolean)
           .join(" ")
@@ -333,7 +357,7 @@ export default function MaintenanceSchedules() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search name / requester / status…"
+                  placeholder="Search name / requester / plot / status…"
                   className="pl-8 w-[280px]"
                 />
               </div>
@@ -451,6 +475,16 @@ export default function MaintenanceSchedules() {
                           disabled={isCompleted || isCancelled}
                         >
                           <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          onClick={() => handleReject(r)}
+                          title="Reject"
+                          disabled={isCompleted || isCancelled || status === 'rejected'}
+                        >
+                          <XCircle className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>

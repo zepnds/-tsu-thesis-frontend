@@ -91,7 +91,7 @@ export default function Sidebar() {
   async function logout() {
     try {
       const token = authObj?.token || authObj?.accessToken;
-      await fetch(`${API_BASE}/logout`, {
+      await fetch(`${API_BASE}/auth/logout`, {
         method: "POST",
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       }).catch(() => { });
