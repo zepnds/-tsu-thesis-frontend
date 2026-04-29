@@ -297,6 +297,14 @@ async function makeQrDataUrl(text, opts = {}) {
   });
 }
 
+function shorten(str, maxLength) {
+  if (str.length <= maxLength) return str;
+
+  let trimmed = str.slice(0, maxLength);
+  let lastSpace = trimmed.lastIndexOf(" ");
+
+  return (lastSpace > 0 ? trimmed.slice(0, lastSpace) : trimmed) + "...";
+}
 /* ---------------- backend helpers ---------------- */
 function extractList(body) {
   if (Array.isArray(body)) return body;
@@ -478,7 +486,7 @@ const ReservationsPanel = memo(function ReservationsPanel({
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
-                  <TableHead>Reserved For</TableHead>
+
                   <TableHead>Status</TableHead>
                   <TableHead>Done?</TableHead>
                   <TableHead>Created</TableHead>
@@ -520,14 +528,7 @@ const ReservationsPanel = memo(function ReservationsPanel({
                         {r.id ?? "—"}
                       </TableCell>
 
-                      <TableCell>
-                        <div className="text-sm">
-                          {r.reserved_for_name ?? "—"}
-                          <div className="text-xs text-slate-500">
-                            {r.reserved_for_email ?? ""}
-                          </div>
-                        </div>
-                      </TableCell>
+
 
                       <TableCell>
                         <Badge className={b.className}>{b.label}</Badge>
@@ -553,7 +554,7 @@ const ReservationsPanel = memo(function ReservationsPanel({
                         className="max-w-[220px] truncate"
                         title={r.notes ?? ""}
                       >
-                        {r.notes ?? "—"}
+                        {shorten(r.notes, 15) ?? "...."}
                       </TableCell>
 
                       <TableCell className="text-right">
@@ -2360,78 +2361,32 @@ export default function BurialPlots() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white/80 backdrop-blur border-slate-200">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Personal Information</CardTitle>
-                    <CardDescription>Stored in plots table (used by search-by-name).</CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label>Full Name</Label>
-                      <Input
-                        value={modalRow.person_full_name ?? ""}
-                        onChange={(e) => setModalRow((m) => ({ ...m, person_full_name: e.target.value }))}
-                        placeholder="e.g. Juan Dela Cruz"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Date of Birth</Label>
-                      <Input
-                        type="date"
-                        max={maxToday}
-                        value={toDateInputValue(modalRow.date_of_birth)}
-                        onChange={(e) => setModalRow((m) => ({ ...m, date_of_birth: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Date of Death</Label>
-                      <Input
-                        type="date"
-                        max={maxToday}
-                        value={toDateInputValue(modalRow.date_of_death)}
-                        onChange={(e) => setModalRow((m) => ({ ...m, date_of_death: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Next of Kin</Label>
-                      <Input
-                        value={modalRow.next_of_kin_name ?? ""}
-                        onChange={(e) => setModalRow((m) => ({ ...m, next_of_kin_name: e.target.value }))}
-                        placeholder="e.g. Maria Dela Cruz"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Contact Phone</Label>
-                      <Input
-                        value={modalRow.contact_phone ?? ""}
-                        onChange={(e) => setModalRow((m) => ({ ...m, contact_phone: e.target.value }))}
-                        placeholder="e.g. +63 9xx xxx xxxx"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label>Contact Email</Label>
-                      <Input
-                        value={modalRow.contact_email ?? ""}
-                        onChange={(e) => setModalRow((m) => ({ ...m, contact_email: e.target.value }))}
-                        placeholder="e.g. family@email.com"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label>Notes</Label>
-                      <Input
-                        value={modalRow.notes ?? ""}
-                        onChange={(e) => setModalRow((m) => ({ ...m, notes: e.target.value }))}
-                        placeholder="Optional notes"
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                <ReservationsPanel
+                  plotLabel={modalRow?.plot_name || modalRow?.id || modalRow?.uid}
+                  reservations={plotReservations}
+                  loading={resLoading}
+                  error={resError}
+                  focusReservationId={focusReservationId}
+                  onRefresh={() => loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid })}
+                  onCancel={async (reservationId) => {
+                    await cancelReservationAdmin(reservationId);
+                    await fetchPlots();
+                    await refreshActiveRequests();
+                    await loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid });
+                  }}
+                  onApprove={async (reservationId) => {
+                    await approveReservationAdmin(reservationId);
+                    await fetchPlots();
+                    await refreshActiveRequests();
+                    await loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid });
+                  }}
+                  onReject={async (reservationId) => {
+                    await rejectReservationAdmin(reservationId);
+                    await fetchPlots();
+                    await refreshActiveRequests();
+                    await loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid });
+                  }}
+                />
 
 
 
@@ -2472,32 +2427,7 @@ export default function BurialPlots() {
                   </Alert>
                 ) : null}
 
-                <ReservationsPanel
-                  plotLabel={modalRow?.plot_name || modalRow?.id || modalRow?.uid}
-                  reservations={plotReservations}
-                  loading={resLoading}
-                  error={resError}
-                  focusReservationId={focusReservationId}
-                  onRefresh={() => loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid })}
-                  onCancel={async (reservationId) => {
-                    await cancelReservationAdmin(reservationId);
-                    await fetchPlots();
-                    await refreshActiveRequests();
-                    await loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid });
-                  }}
-                  onApprove={async (reservationId) => {
-                    await approveReservationAdmin(reservationId);
-                    await fetchPlots();
-                    await refreshActiveRequests();
-                    await loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid });
-                  }}
-                  onReject={async (reservationId) => {
-                    await rejectReservationAdmin(reservationId);
-                    await fetchPlots();
-                    await refreshActiveRequests();
-                    await loadReservationsForPlot({ id: modalRow?.id, uid: modalRow?.uid });
-                  }}
-                />
+
 
                 <Card className="bg-white/80 backdrop-blur border-slate-200">
                   <CardHeader className="pb-2">

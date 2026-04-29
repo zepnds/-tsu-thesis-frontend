@@ -198,6 +198,8 @@ export default function Login() {
     await sendOtpEmail(formData.email.trim(), formData.username.trim());
   }
 
+
+
   return (
     <div className="relative min-h-screen flex items-center justify-center font-poppins px-4">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
@@ -232,7 +234,7 @@ export default function Login() {
                   : "bg-emerald-50/90 border-emerald-200 text-emerald-700"
                   }`}
               >
-                <AlertDescription className="font-medium text-center">
+                <AlertDescription className={`font-medium text-center ${msg.type === "error" ? "text-red-600" : "text-emerald-600"}`}>
                   {msg.text}
                 </AlertDescription>
               </Alert>
@@ -301,9 +303,9 @@ export default function Login() {
                   onChange={onChange}
                   placeholder={isLogin ? "you@example.com or johndoe" : "you@example.com"}
                   autoComplete="email"
-                  className={(isLogin && error.usernameOrEmail) || (!isLogin && error.email) ? "border-rose-400 focus-visible:ring-rose-400" : ""}
+
                 />
-                {isLogin && error.usernameOrEmail && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.usernameOrEmail}</p>}
+
                 {!isLogin && error.email && <p className="text-[10px] text-rose-500 font-medium px-1 mt-0.5">{error.email}</p>}
               </div>
 

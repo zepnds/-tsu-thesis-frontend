@@ -1666,7 +1666,7 @@ export default function Reservation() {
                               {applicant.full_name || "—"}
                             </div>
                             <div className="text-xs text-slate-500 mt-1">
-                              {applicant.relationship || "—"} • {applicant.contact_number || "—"}
+                              contact number • {applicant.contact_number || "—"}
                             </div>
                           </div>
                           <Button
@@ -1943,7 +1943,7 @@ export default function Reservation() {
                     {applicant.full_name || "Not set"}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {applicant.relationship || "Relationship: —"} •{" "}
+                    Contact Number: •{" "}
                     {applicant.contact_number || "Contact: —"}
                   </div>
 

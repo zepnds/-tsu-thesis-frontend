@@ -79,7 +79,7 @@ async function fetchFirstOk(urls, options) {
         ? await res.json().catch(() => ({}))
         : await res.text().catch(() => "");
 
-      if (res.ok) return { res, body, url };
+      if (res.ok && body?.status !== "error") return { res, body, url };
 
       // allow fallback to other endpoints
       if (res.status === 404) {
@@ -517,7 +517,6 @@ export default function Inquire() {
   const [selectedPlot, setSelectedPlot] = useState(null);
   // shared deceased name input
   const [selectedName, setSelectedName] = useState("");
-  const [deceasedName, setDeceasedName] = useState("");
 
   // ✅ from Reservation -> Inquire (prefill)
   const [prefillReservationId, setPrefillReservationId] = useState(null);
@@ -542,6 +541,8 @@ export default function Inquire() {
     deathDate: "",
     burialDate: "",
   });
+  const [burialFile, setBurialFile] = useState(null);
+  const [burialFilePreview, setBurialFilePreview] = useState(null);
 
   // ✅ IMPORTANT: To avoid "no available dates" on Death Date,
   // Birth Date must ALSO be capped to yesterday.
@@ -620,12 +621,13 @@ export default function Inquire() {
         const filterLost = list.filter(plot => plot.status === "approved")
         const opts = filterLost
           .map((r) => {
-            const name = extractPlotIdAny(r);
-
             const pid = extractPlotIdAny(r);
+            // If it's a reservation, we might not have a deceased name yet, 
+            // so we use "Plot #[ID]" as a label if no name is found.
+            const name = r.deceased_name || r.person_full_name || (pid ? `Plot #${pid}` : "Unknown Plot");
             return { name, plot_id: pid };
           })
-          .filter(Boolean)
+          .filter(o => o.name && o.plot_id)
           .sort((a, b) => a.name.localeCompare(b.name));
 
         if (!cancelled) setDeceasedOptions(opts);
@@ -645,7 +647,7 @@ export default function Inquire() {
   useEffect(() => {
     if (manualPlotId) return;
 
-    const key = nameKey(deceasedName);
+    const key = nameKey(selectedName);
     if (!key) {
       setAutoPlotId(null);
       return;
@@ -653,7 +655,7 @@ export default function Inquire() {
 
     const pid = deceasedNameToPlotId.get(key) || null;
     setAutoPlotId(pid);
-  }, [deceasedName, deceasedNameToPlotId, manualPlotId]);
+  }, [selectedName, deceasedNameToPlotId, manualPlotId]);
 
   /* -------------------- Load maintenance schedule -------------------- */
   const loadMySchedule = useCallback(async () => {
@@ -862,43 +864,19 @@ export default function Inquire() {
     setMsg({ type: "", text: "" });
 
     const dn = String(selectedName || "").trim();
-    const selectedPlotRecords = deceasedOptions.find((option) => option.id === linkedPlotId);
-    console.log("selectedPlotRecords", selectedPlotRecords);
+    const linkedPlotIdAny = manualPlotId || autoPlotId;
+
     setSubmitting(true);
     try {
-
       if (requestType === "maintenance") {
-        if (selectedPlotRecords == null || undefined) {
-          setMsg({ type: "error", text: "You must be the proper relative or beneficiary of the plot to request a maintenance." });
-          return;
-        }
-        if (!dn) {
-          setMsg({ type: "error", text: "Deceased name is required." });
-          return;
-        }
-        if (!String(maintenanceForm.description || "").trim()) {
-          setMsg({ type: "error", text: "Description is required." });
-          return;
-        }
-        if (!maintenanceForm.preferredDate || !maintenanceForm.preferredTime) {
-          setMsg({ type: "error", text: "Preferred date and time are required." });
-          return;
-        }
+        if (!dn) throw new Error("Deceased name is required.");
+        if (!String(maintenanceForm.description || "").trim()) throw new Error("Description is required.");
+        if (!maintenanceForm.preferredDate || !maintenanceForm.preferredTime) throw new Error("Preferred date and time are required.");
 
         const maintenanceNoteParts = [String(maintenanceForm.description || "").trim()];
         const grave_id = selectedSearchRecord?.id || null;
 
-        if (linkedPlotId) {
-          maintenanceNoteParts.push(`Linked plot ID: ${String(linkedPlotId)}`);
-        }
-        if (selectedSearchRecord) {
-          maintenanceNoteParts.push(
-            `Selected from search: ${extractBurialSearchName(selectedSearchRecord) || dn}`
-          );
-          maintenanceNoteParts.push(
-            `Selected plot label: ${extractBurialSearchPlotLabel(selectedSearchRecord)}`
-          );
-        }
+        if (linkedPlotIdAny) maintenanceNoteParts.push(`Linked plot ID: ${String(linkedPlotIdAny)}`);
 
         const payload = {
           deceased_name: dn,
@@ -908,12 +886,11 @@ export default function Inquire() {
           preferred_date: maintenanceForm.preferredDate,
           preferred_time: maintenanceForm.preferredTime,
           family_contact: currentUser.id,
-          plot_id: linkedPlotId ? String(linkedPlotId) : null,
+          plot_id: linkedPlotIdAny ? String(linkedPlotIdAny) : null,
           grave_id: grave_id ? String(grave_id) : null,
         };
 
-        const url = `${API_BASE}/visitor/request-maintenance`;
-        const res = await fetch(url, {
+        const res = await fetch(`${API_BASE}/visitor/request-maintenance`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...headersAuth },
           body: JSON.stringify(payload),
@@ -923,80 +900,49 @@ export default function Inquire() {
         if (!res.ok) throw new Error(data?.message || `Request failed: ${res.status}`);
 
         setMsg({ type: "ok", text: "Maintenance request submitted successfully!" });
-
-        setMaintenanceForm({
-          description: "",
-          preferredDate: "",
-          preferredTime: "",
-          priority: "medium",
-        });
-
+        setMaintenanceForm({ description: "", preferredDate: "", preferredTime: "", priority: "medium" });
         await loadMySchedule();
+
       } else {
-        if (!dn || !burialForm.birthDate || !burialForm.deathDate || !burialForm.burialDate) {
-          setMsg({
-            type: "error",
-            text: "Deceased name, birth date, death date, and burial date are required.",
-          });
-          return;
+        // Burial
+        if (!dn || !burialForm.birthDate || !burialForm.deathDate || !burialForm.burialDate || !burialFile) {
+          throw new Error("Deceased name, birth date, death date, burial date, and death certificate are required.");
         }
 
-        // ✅ Birth/Death cannot be today or future (deathMaxYMD = yesterday)
-        if (burialForm.birthDate > deathMaxYMD) {
-          setMsg({ type: "error", text: "Birth date cannot be today or in the future." });
-          return;
-        }
-        if (burialForm.deathDate > deathMaxYMD) {
-          setMsg({ type: "error", text: "Death date cannot be today or in the future." });
-          return;
-        }
+        if (burialForm.birthDate > deathMaxYMD) throw new Error("Birth date cannot be today or in the future.");
+        if (burialForm.deathDate > deathMaxYMD) throw new Error("Death date cannot be today or in the future.");
+        if (burialForm.deathDate < burialForm.birthDate) throw new Error("Death date cannot be earlier than birth date.");
+        if (burialForm.burialDate < burialForm.deathDate) throw new Error("Burial date cannot be earlier than death date.");
 
-        if (burialForm.deathDate < burialForm.birthDate) {
-          setMsg({ type: "error", text: "Death date cannot be earlier than birth date." });
-          return;
-        }
-
-        if (burialForm.burialDate < burialForm.deathDate) {
-          setMsg({ type: "error", text: "Burial date cannot be earlier than death date." });
-          return;
-        }
-
-        const plot_id = linkedPlotIdForBurial;
+        const plot_id = manualPlotId || autoPlotId; // Prefer manual
         if (!plot_id) {
-          setMsg({
-            type: "error",
-            text:
-              "To submit a burial schedule request, you must have a linked plot. Please reserve a plot first (Reservation page), select a deceased name with an assigned plot, or click a plot on the map.",
-          });
-          return;
+          throw new Error("Burial requests require a linked plot. Please reserve a plot first or click a plot on the map.");
         }
 
-        const payload = {
-          deceased_name: dn,
-          birth_date: burialForm.birthDate,
-          death_date: burialForm.deathDate,
-          burial_date: burialForm.burialDate,
-          family_contact: currentUser.id,
-          plot_id: String(plot_id),
-          ...(prefillReservationId ? { reservation_id: String(prefillReservationId) } : {}),
-        };
+        const url = `${API_BASE}/visitor/request-burial`;
+        const fd = new FormData();
+        fd.append("deceased_name", dn);
+        fd.append("birth_date", burialForm.birthDate);
+        fd.append("death_date", burialForm.deathDate);
+        fd.append("burial_date", burialForm.burialDate);
+        fd.append("family_contact", currentUser.id);
+        fd.append("plot_id", String(plot_id));
+        if (prefillReservationId) fd.append("reservation_id", String(prefillReservationId));
+        fd.append("death_certificate", burialFile);
 
-        const urls = [`${API_BASE}/visitor/request-burial`, `${API_BASE}/visitor/burial-request`];
-
-        await fetchFirstOk(urls, {
+        const res = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...headersAuth },
-          body: JSON.stringify(payload),
+          headers: { ...headersAuth },
+          body: fd,
         });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.status === "error") throw new Error(data?.message || `Request failed: ${res.status}`);
 
         setMsg({ type: "ok", text: "Burial request submitted successfully!" });
-
-        setBurialForm({
-          birthDate: "",
-          deathDate: "",
-          burialDate: "",
-        });
-
+        setBurialForm({ birthDate: "", deathDate: "", burialDate: "" });
+        setBurialFile(null);
+        setBurialFilePreview(null);
         await loadMyBurialRequests();
       }
 
@@ -1166,7 +1112,6 @@ export default function Inquire() {
   const selectedDeathCertKind = useMemo(() => {
     if (!selectedDeathCertPreviewUrl || !deathCertFile) return "";
     const t = String(deathCertFile.type || "").toLowerCase();
-    if (t === "application/pdf") return "pdf";
     if (t.startsWith("image/")) return "image";
     return "other";
   }, [selectedDeathCertPreviewUrl, deathCertFile]);
@@ -1188,7 +1133,7 @@ export default function Inquire() {
     if (!deathCertTarget?.id) return;
 
     if (!deathCertFile) {
-      setMsg({ type: "error", text: "Please choose a file (JPG/PNG/WEBP/PDF)." });
+      setMsg({ type: "error", text: "Please choose an image file (JPG, JPEG, or PNG)." });
       return;
     }
 
@@ -1276,6 +1221,7 @@ export default function Inquire() {
       </div>
 
       <div className="mx-auto w-full max-w-6xl space-y-4">
+
         {/* Header / Hero */}
         <Card vclassName="border-white/60 bg-white/75 backdrop-blur shadow-lg overflow-hidden">
           <div className="p-6 md:p-8">
@@ -1316,7 +1262,302 @@ export default function Inquire() {
             </div>
           </div>
         </Card>
+        {/* MY BURIAL REQUESTS */}
+        <Card className="border-white/60 bg-white/80 backdrop-blur shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-xl font-bold text-slate-900">My Burial Requests</CardTitle>
+            <CardDescription className="text-slate-600">
+              View your submitted burial requests and their status (including death certificate upload).
+            </CardDescription>
+          </CardHeader>
 
+          <CardContent className="space-y-3">
+            {burialError ? <p className="text-sm text-rose-600">{burialError}</p> : null}
+
+            {burialLoading ? (
+              <div className="space-y-2">
+                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
+                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
+              </div>
+            ) : myBurialRequests.length ? (
+              <div className="space-y-3">
+                {myBurialRequests.map((r) => {
+                  const status = safeLower(r.status);
+                  const isCancelled = status === "cancelled" || status === "canceled";
+                  const plotId = getRowPlotId(r);
+
+                  return (
+                    <div
+                      key={r.id}
+                      className={
+                        "rounded-2xl border border-l-4 bg-white/65 p-4 transition hover:bg-white/80 " +
+                        statusAccent(r.status)
+                      }
+                    >
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-semibold text-slate-900 truncate">
+                              {r.deceased_name || "Burial Request"}
+                            </div>
+                            <span className={statusPill(r.status)}>{r.status || "pending"}</span>
+
+                            {plotId != null ? (
+                              <Badge variant="outline" className="text-slate-700 bg-white/50">
+                                Plot #{String(plotId)}
+                              </Badge>
+                            ) : null}
+
+                            {r.death_certificate_url ? (
+                              <Badge variant="outline" className="text-emerald-700 bg-white/50">
+                                Death certificate uploaded
+                              </Badge>
+                            ) : null}
+                          </div>
+
+                          <Separator className="my-3" />
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-700">
+                            <div className="rounded-xl bg-white/60 border p-2">
+                              <div className="text-slate-500">Birth</div>
+                              <div className="font-medium">{r.birth_date || "—"}</div>
+                            </div>
+                            <div className="rounded-xl bg-white/60 border p-2">
+                              <div className="text-slate-500">Death</div>
+                              <div className="font-medium">{r.death_date || "—"}</div>
+                            </div>
+                            <div className="rounded-xl bg-white/60 border p-2">
+                              <div className="text-slate-500">Burial</div>
+                              <div className="font-medium">{r.burial_date || "—"}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex md:flex-col gap-2 md:min-w-[220px]">
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => {
+                              const pid = plotId || null;
+                              if (!pid) {
+                                setMsg({
+                                  type: "error",
+                                  text: "No plot linked to this burial request yet.",
+                                });
+                                return;
+                              }
+                              setManualPlotId(String(pid));
+                              scrollToMap();
+                            }}
+                          >
+                            <MapPin className="h-4 w-4" />
+                            View on map
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => openDeathCert(r)}
+                            disabled={isCancelled}
+                          >
+                            <UploadCloud className="h-4 w-4" />
+                            {r.death_certificate_url ? "Replace certificate" : "Upload certificate"}
+                          </Button>
+
+                          {/* ✅ VIEW in MODAL (no new page) */}
+                          {r.death_certificate_url ? (
+                            <Button
+                              variant="secondary"
+                              className="gap-2"
+                              onClick={() => openViewCert(r)}
+                            >
+                              <FileText className="h-4 w-4" />
+                              View certificate
+                            </Button>
+                          ) : null}
+
+                          {!isCancelled && (
+                            <Button
+                              variant="secondary"
+                              onClick={() => cancelBurial(r.id)}
+                              className="gap-2"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Cancel request
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">No burial requests yet.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* MY MAINTENANCE SCHEDULE */}
+        <Card className="border-white/60 bg-white/80 backdrop-blur shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-xl font-bold text-slate-900">My Maintenance Schedule</CardTitle>
+            <CardDescription className="text-slate-600">
+              Track requests, schedules, assigned staff, completion, and feedback.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {scheduleError ? <p className="text-sm text-rose-600">{scheduleError}</p> : null}
+
+            {scheduleLoading ? (
+              <div className="space-y-2">
+                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
+                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
+              </div>
+            ) : mySchedule.length ? (
+              <div className="space-y-3">
+                {mySchedule.map((r) => {
+                  const status = safeLower(r.status);
+                  const isCompleted = status === "completed";
+                  const isCancelled = status === "cancelled" || status === "canceled";
+                  const hasFeedback = r.feedback_rating != null;
+
+                  const plotId = getRowPlotId(r);
+
+                  return (
+                    <div
+                      key={r.id}
+                      className={
+                        "rounded-2xl border border-l-4 bg-white/65 p-4 transition " +
+                        statusAccent(r.status) +
+                        " hover:bg-white/80"
+                      }
+                    >
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-semibold text-slate-900 truncate">
+                              {r.deceased_name || "Maintenance"}
+                            </div>
+                            <span className={statusPill(r.status)}>{r.status || "pending"}</span>
+                            {plotId != null ? (
+                              <Badge variant="outline" className="text-slate-700 bg-white/50">
+                                Plot #{String(plotId)}
+                              </Badge>
+                            ) : null}
+                          </div>
+
+                          <div className="text-sm text-slate-700 mt-2">{r.description || "—"}</div>
+
+                          <Separator className="my-3" />
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+                            <div className="rounded-xl bg-white/60 border p-2">
+                              <div className="text-slate-500">Preferred</div>
+                              <div className="font-medium">
+                                {r.preferred_date || "—"} {r.preferred_time || ""}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl bg-white/60 border p-2">
+                              <div className="text-slate-500">Official schedule</div>
+                              <div className="font-medium">
+                                {r.scheduled_date ? (
+                                  <>
+                                    {fmtDateLong(r.scheduled_date)} {r.scheduled_time || ""}
+                                  </>
+                                ) : (
+                                  "— (waiting for admin schedule)"
+                                )}
+                              </div>
+                              {r.assigned_staff_name ? (
+                                <div className="mt-1 text-slate-600">
+                                  Staff:{" "}
+                                  <span className="font-medium">{r.assigned_staff_name}</span>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {hasFeedback ? (
+                            <div className="mt-3 rounded-xl border bg-white/60 p-3">
+                              <div className="flex items-center gap-2 text-sm">
+                                <div className="font-medium text-slate-800">Your rating</div>
+                                <div className="flex items-center gap-1">
+                                  {[1, 2, 3, 4, 5].map((i) => (
+                                    <Star
+                                      key={i}
+                                      className={
+                                        "h-4 w-4 " +
+                                        (Number(r.feedback_rating) >= i
+                                          ? "text-amber-500"
+                                          : "text-slate-300")
+                                      }
+                                      fill={Number(r.feedback_rating) >= i ? "currentColor" : "none"}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="text-xs text-slate-600">
+                                  ({r.feedback_rating}/5)
+                                </span>
+                              </div>
+                              {r.feedback_text ? (
+                                <div className="mt-2 text-sm text-slate-700">
+                                  <MessageSquareText className="inline-block h-4 w-4 mr-1 text-slate-400" />
+                                  {r.feedback_text}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex md:flex-col gap-2 md:min-w-[200px]">
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => {
+                              if (plotId == null) {
+                                setMsg({ type: "error", text: "No plot linked to this record yet." });
+                                return;
+                              }
+                              setManualPlotId(String(plotId));
+                              scrollToMap();
+                            }}
+                          >
+                            <MapPin className="h-4 w-4" />
+                            View on map
+                          </Button>
+
+                          {!isCompleted && (
+                            <Button
+                              variant="secondary"
+                              onClick={() => requestReschedule(r.id)}
+                              disabled={isCancelled}
+                              className="gap-2"
+                            >
+                              <CalendarDays className="h-4 w-4" />
+                              Request reschedule
+                            </Button>
+                          )}
+
+                          {isCompleted && !hasFeedback && (
+                            <Button onClick={() => openFeedback(r)} className="gap-2">
+                              <Star className="h-4 w-4" />
+                              Rate / Feedback
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">No maintenance requests yet.</p>
+            )}
+          </CardContent>
+        </Card>
         {!isVisitorLoggedIn && (
           <Alert
             className="bg-rose-50/90 backdrop-blur border-rose-200 shadow-md"
@@ -1396,18 +1637,19 @@ export default function Inquire() {
                 {/* Deceased name */}
                 <div className="space-y-2">
                   {requestType !== "maintenance" ? (
-                    <div className="grid grid-cols-6">
-                      <div className="col-span-1 w-full">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <div className="flex-1 space-y-2">
                         <Label>Select Plot</Label>
                         <Select
                           value={selectedPlot}
                           onValueChange={(val) => {
                             const key = nameKey(val);
                             const pid = deceasedNameToPlotId.get(key) || null;
-                            setDeceasedName(val);
+
                             setSelectedPlot(val);
                             setManualPlotId(String(pid) || null);
-                            setMsg({ type: "ok", text: `Plot #${String(pid)} linked from map.` });
+                            setMsg({ type: "ok", text: `Plot #${String(pid)} linked from selection.` });
+                            setSelectedName("");
                             setPrefillReservationId(null);
                             setSelectedSearchRecord(null);
 
@@ -1423,14 +1665,14 @@ export default function Inquire() {
                             deceasedOptions.length === 0
                           }
                         >
-                          <SelectTrigger className="bg-white/70">
+                          <SelectTrigger className="bg-white/70 w-full">
                             <SelectValue
                               placeholder={
                                 namesLoading
                                   ? "Loading your deceased names…"
-                                  : deceasedOptions.length
-                                    ? "Select from your deceased names"
-                                    : "No deceased names found"
+                                  : deceasedOptions.length > 0
+                                    ? "Select Plot ID"
+                                    : "Invalid plot id"
                               }
                             />
                           </SelectTrigger>
@@ -1444,7 +1686,8 @@ export default function Inquire() {
                         </Select>
                         {namesError && <p className="text-xs text-rose-600">{namesError}</p>}
                       </div>
-                      <div className="col-span-5">
+
+                      <div className="flex-[2] space-y-2">
                         <Label>Deceased Name (required)</Label>
                         <Input
                           type="text"
@@ -1452,12 +1695,24 @@ export default function Inquire() {
                           onChange={(e) => {
                             const v = e.target.value || "";
                             setSelectedName(v);
+
+                            // // Sync dropdown if there's a match
+                            // const hasOption = deceasedOptions.some(o => safeLower(o.name) === safeLower(v));
+                            // if (hasOption) {
+                            //   setSelectedPlot(v);
+                            //   const key = nameKey(v);
+                            //   const pid = deceasedNameToPlotId.get(key) || null;
+                            //   setManualPlotId(String(pid) || null);
+                            // } else {
+                            //   setSelectedPlot(""); 
+                            // }
+
                             setPrefillReservationId(null);
                             setSelectedSearchRecord(null);
                           }}
                           placeholder="Or type full name"
                           disabled={!isVisitorLoggedIn || submitting}
-                          className="bg-white/70"
+                          className="bg-white/70 w-full"
                         />
                       </div>
                     </div>
@@ -1527,9 +1782,11 @@ export default function Inquire() {
                                       type="button"
                                       size="sm"
                                       onClick={() => {
+                                        const searchName = extractBurialSearchName(row) || "—";
+                                        const searchPlotId = extractBurialSearchPlotId(row);
                                         setSelectedSearchRecord(row);
-                                        setSelectedName("");
-                                        setDeceasedName(searchName);
+                                        setSelectedName(searchName);
+                                        setSelectedPlot(""); // Clear internal dropdown
                                         setAutoPlotId(null);
                                         setManualPlotId(
                                           searchPlotId != null ? String(searchPlotId) : null
@@ -1725,6 +1982,74 @@ export default function Inquire() {
                       Birth/Death dates are locked to the past (no today/future dates). Death date also can’t be
                       earlier than Birth date.
                     </p>
+
+                    <Separator className="my-2" />
+
+                    <div className="space-y-2">
+                      <Label className="text-slate-900 font-semibold flex items-center gap-2">
+                        <UploadCloud className="h-4 w-4 text-emerald-600" />
+                        Death Certificate (Required)
+                      </Label>
+
+                      <div
+                        className={`relative rounded-2xl border-2 border-dashed transition-all p-6 flex flex-col items-center justify-center gap-3 bg-white/40 hover:bg-white/60 hover:border-emerald-400 group cursor-pointer ${burialFile ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-200'}`}
+                        onClick={() => document.getElementById('deathCertInput').click()}
+                      >
+                        <input
+                          id="deathCertInput"
+                          type="file"
+                          className="hidden"
+                          accept="image/jpeg,image/png"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            setBurialFile(file);
+                            if (file && file.type.startsWith("image/")) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => setBurialFilePreview(ev.target.result);
+                              reader.readAsDataURL(file);
+                            } else {
+                              setBurialFilePreview(null);
+                            }
+                          }}
+                        />
+
+                        {burialFilePreview ? (
+                          <div className="relative h-24 w-24 rounded-xl overflow-hidden border shadow-sm group/preview">
+                            <img src={burialFilePreview} alt="Preview" className="h-full w-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition flex items-center justify-center">
+                              <Sparkles className="h-5 w-5 text-white" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <UploadCloud className="h-6 w-6 text-emerald-600" />
+                          </div>
+                        )}
+
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-slate-900">
+                            {burialFile ? burialFile.name : "Click to upload death certificate"}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            JPG, JPEG or PNG (Max 5MB)
+                          </p>
+                        </div>
+
+                        {burialFile && (
+                          <button
+                            type="button"
+                            className="absolute top-2 right-2 p-1 rounded-full bg-white/80 text-rose-500 hover:bg-rose-500 hover:text-white transition shadow-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBurialFile(null);
+                              setBurialFilePreview(null);
+                            }}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1826,6 +2151,14 @@ export default function Inquire() {
                     if (pid != null) {
                       setManualPlotId(String(pid));
                       setMsg({ type: "ok", text: `Plot #${String(pid)} linked from map.` });
+
+                      // Auto-select dropdown if this plot belongs to a known deceased person
+                      const found = deceasedOptions.find(o => String(o.plot_id) === String(pid));
+                      if (found) {
+                        setSelectedPlot(found.name);
+                      } else {
+                        setSelectedPlot(""); // Clear if not found in pre-loaded list
+                      }
                     }
                   }}
                 />
@@ -1843,302 +2176,8 @@ export default function Inquire() {
           </Card>
         </div>
 
-        {/* MY MAINTENANCE SCHEDULE */}
-        <Card className="border-white/60 bg-white/80 backdrop-blur shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold text-slate-900">My Maintenance Schedule</CardTitle>
-            <CardDescription className="text-slate-600">
-              Track requests, schedules, assigned staff, completion, and feedback.
-            </CardDescription>
-          </CardHeader>
 
-          <CardContent className="space-y-3">
-            {scheduleError ? <p className="text-sm text-rose-600">{scheduleError}</p> : null}
 
-            {scheduleLoading ? (
-              <div className="space-y-2">
-                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
-                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
-              </div>
-            ) : mySchedule.length ? (
-              <div className="space-y-3">
-                {mySchedule.map((r) => {
-                  const status = safeLower(r.status);
-                  const isCompleted = status === "completed";
-                  const isCancelled = status === "cancelled" || status === "canceled";
-                  const hasFeedback = r.feedback_rating != null;
-
-                  const plotId = getRowPlotId(r);
-
-                  return (
-                    <div
-                      key={r.id}
-                      className={
-                        "rounded-2xl border border-l-4 bg-white/65 p-4 transition " +
-                        statusAccent(r.status) +
-                        " hover:bg-white/80"
-                      }
-                    >
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="font-semibold text-slate-900 truncate">
-                              {r.deceased_name || "Maintenance"}
-                            </div>
-                            <span className={statusPill(r.status)}>{r.status || "pending"}</span>
-                            {plotId != null ? (
-                              <Badge variant="outline" className="text-slate-700 bg-white/50">
-                                Plot #{String(plotId)}
-                              </Badge>
-                            ) : null}
-                          </div>
-
-                          <div className="text-sm text-slate-700 mt-2">{r.description || "—"}</div>
-
-                          <Separator className="my-3" />
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
-                            <div className="rounded-xl bg-white/60 border p-2">
-                              <div className="text-slate-500">Preferred</div>
-                              <div className="font-medium">
-                                {r.preferred_date || "—"} {r.preferred_time || ""}
-                              </div>
-                            </div>
-
-                            <div className="rounded-xl bg-white/60 border p-2">
-                              <div className="text-slate-500">Official schedule</div>
-                              <div className="font-medium">
-                                {r.scheduled_date ? (
-                                  <>
-                                    {fmtDateLong(r.scheduled_date)} {r.scheduled_time || ""}
-                                  </>
-                                ) : (
-                                  "— (waiting for admin schedule)"
-                                )}
-                              </div>
-                              {r.assigned_staff_name ? (
-                                <div className="mt-1 text-slate-600">
-                                  Staff:{" "}
-                                  <span className="font-medium">{r.assigned_staff_name}</span>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          {hasFeedback ? (
-                            <div className="mt-3 rounded-xl border bg-white/60 p-3">
-                              <div className="flex items-center gap-2 text-sm">
-                                <div className="font-medium text-slate-800">Your rating</div>
-                                <div className="flex items-center gap-1">
-                                  {[1, 2, 3, 4, 5].map((i) => (
-                                    <Star
-                                      key={i}
-                                      className={
-                                        "h-4 w-4 " +
-                                        (Number(r.feedback_rating) >= i
-                                          ? "text-amber-500"
-                                          : "text-slate-300")
-                                      }
-                                      fill={Number(r.feedback_rating) >= i ? "currentColor" : "none"}
-                                    />
-                                  ))}
-                                </div>
-                                <span className="text-xs text-slate-600">
-                                  ({r.feedback_rating}/5)
-                                </span>
-                              </div>
-                              {r.feedback_text ? (
-                                <div className="mt-2 text-sm text-slate-700">
-                                  <MessageSquareText className="inline-block h-4 w-4 mr-1 text-slate-400" />
-                                  {r.feedback_text}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="flex md:flex-col gap-2 md:min-w-[200px]">
-                          <Button
-                            variant="outline"
-                            className="gap-2"
-                            onClick={() => {
-                              if (plotId == null) {
-                                setMsg({ type: "error", text: "No plot linked to this record yet." });
-                                return;
-                              }
-                              setManualPlotId(String(plotId));
-                              scrollToMap();
-                            }}
-                          >
-                            <MapPin className="h-4 w-4" />
-                            View on map
-                          </Button>
-
-                          {!isCompleted && (
-                            <Button
-                              variant="secondary"
-                              onClick={() => requestReschedule(r.id)}
-                              disabled={isCancelled}
-                              className="gap-2"
-                            >
-                              <CalendarDays className="h-4 w-4" />
-                              Request reschedule
-                            </Button>
-                          )}
-
-                          {isCompleted && !hasFeedback && (
-                            <Button onClick={() => openFeedback(r)} className="gap-2">
-                              <Star className="h-4 w-4" />
-                              Rate / Feedback
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-600">No maintenance requests yet.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* MY BURIAL REQUESTS */}
-        <Card className="border-white/60 bg-white/80 backdrop-blur shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold text-slate-900">My Burial Requests</CardTitle>
-            <CardDescription className="text-slate-600">
-              View your submitted burial requests and their status (including death certificate upload).
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="space-y-3">
-            {burialError ? <p className="text-sm text-rose-600">{burialError}</p> : null}
-
-            {burialLoading ? (
-              <div className="space-y-2">
-                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
-                <div className="h-16 rounded-xl bg-white/60 border animate-pulse" />
-              </div>
-            ) : myBurialRequests.length ? (
-              <div className="space-y-3">
-                {myBurialRequests.map((r) => {
-                  const status = safeLower(r.status);
-                  const isCancelled = status === "cancelled" || status === "canceled";
-                  const plotId = getRowPlotId(r);
-
-                  return (
-                    <div
-                      key={r.id}
-                      className={
-                        "rounded-2xl border border-l-4 bg-white/65 p-4 transition hover:bg-white/80 " +
-                        statusAccent(r.status)
-                      }
-                    >
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="font-semibold text-slate-900 truncate">
-                              {r.deceased_name || "Burial Request"}
-                            </div>
-                            <span className={statusPill(r.status)}>{r.status || "pending"}</span>
-
-                            {plotId != null ? (
-                              <Badge variant="outline" className="text-slate-700 bg-white/50">
-                                Plot #{String(plotId)}
-                              </Badge>
-                            ) : null}
-
-                            {r.death_certificate_url ? (
-                              <Badge variant="outline" className="text-emerald-700 bg-white/50">
-                                Death certificate uploaded
-                              </Badge>
-                            ) : null}
-                          </div>
-
-                          <Separator className="my-3" />
-
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-700">
-                            <div className="rounded-xl bg-white/60 border p-2">
-                              <div className="text-slate-500">Birth</div>
-                              <div className="font-medium">{r.birth_date || "—"}</div>
-                            </div>
-                            <div className="rounded-xl bg-white/60 border p-2">
-                              <div className="text-slate-500">Death</div>
-                              <div className="font-medium">{r.death_date || "—"}</div>
-                            </div>
-                            <div className="rounded-xl bg-white/60 border p-2">
-                              <div className="text-slate-500">Burial</div>
-                              <div className="font-medium">{r.burial_date || "—"}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex md:flex-col gap-2 md:min-w-[220px]">
-                          <Button
-                            variant="outline"
-                            className="gap-2"
-                            onClick={() => {
-                              const pid = plotId || null;
-                              if (!pid) {
-                                setMsg({
-                                  type: "error",
-                                  text: "No plot linked to this burial request yet.",
-                                });
-                                return;
-                              }
-                              setManualPlotId(String(pid));
-                              scrollToMap();
-                            }}
-                          >
-                            <MapPin className="h-4 w-4" />
-                            View on map
-                          </Button>
-
-                          <Button
-                            variant="outline"
-                            className="gap-2"
-                            onClick={() => openDeathCert(r)}
-                            disabled={isCancelled}
-                          >
-                            <UploadCloud className="h-4 w-4" />
-                            {r.death_certificate_url ? "Replace certificate" : "Upload certificate"}
-                          </Button>
-
-                          {/* ✅ VIEW in MODAL (no new page) */}
-                          {r.death_certificate_url ? (
-                            <Button
-                              variant="secondary"
-                              className="gap-2"
-                              onClick={() => openViewCert(r)}
-                            >
-                              <FileText className="h-4 w-4" />
-                              View certificate
-                            </Button>
-                          ) : null}
-
-                          {!isCancelled && (
-                            <Button
-                              variant="secondary"
-                              onClick={() => cancelBurial(r.id)}
-                              className="gap-2"
-                            >
-                              <XCircle className="h-4 w-4" />
-                              Cancel request
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-600">No burial requests yet.</p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* Feedback dialog */}
@@ -2315,74 +2354,114 @@ export default function Inquire() {
               </div>
 
               {/* ✅ CURRENT uploaded certificate preview */}
-              {currentDeathCertUrl ? (
+              {currentDeathCertUrl && !selectedDeathCertPreviewUrl ? (
                 <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-800">Current certificate</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-slate-800">Current certificate</div>
+                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">Existing</Badge>
+                  </div>
 
                   {currentDeathCertKind === "image" ? (
-                    <div className="rounded-xl border bg-white overflow-hidden">
+                    <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
                       <img
                         src={currentDeathCertUrl}
                         alt="Death certificate"
-                        className="w-full max-h-[60vh] object-contain"
+                        className="w-full max-h-[40vh] object-contain"
                         loading="lazy"
                       />
                     </div>
                   ) : currentDeathCertKind === "pdf" ? (
-                    <div className="rounded-xl border bg-white overflow-hidden">
+                    <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
                       <iframe
                         title="Death certificate PDF preview"
                         src={currentDeathCertUrl}
-                        className="w-full h-[60vh]"
+                        className="w-full h-[40vh]"
                       />
                     </div>
                   ) : (
-                    <div className="rounded-xl border bg-white p-3 text-sm text-slate-700">
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-slate-600 italic">
                       Preview not available for this file type.
                     </div>
                   )}
+                </div>
+              ) : null}
+
+              {/* ✅ SELECTED file preview (Replacement) */}
+              {selectedDeathCertPreviewUrl ? (
+                <div className="space-y-2 p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-emerald-500" />
+                      New file to upload
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-rose-500 hover:text-rose-600 hover:bg-rose-50"
+                      onClick={() => setDeathCertFile(null)}
+                    >
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+
+                  {selectedDeathCertKind === "image" ? (
+                    <div className="rounded-xl border border-emerald-200 bg-white overflow-hidden shadow-md">
+                      <img
+                        src={selectedDeathCertPreviewUrl}
+                        alt="Selected death certificate"
+                        className="w-full max-h-[40vh] object-contain"
+                      />
+                    </div>
+                  ) : selectedDeathCertKind === "pdf" ? (
+                    <div className="rounded-xl border border-emerald-200 bg-white overflow-hidden shadow-md">
+                      <iframe
+                        title="Selected PDF preview"
+                        src={selectedDeathCertPreviewUrl}
+                        className="w-full h-[40vh]"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center text-sm text-emerald-800">
+                      File: <span className="font-medium">{deathCertFile?.name}</span>
+                    </div>
+                  )}
+
+                  <div className="text-[11px] text-emerald-700 italic">
+                    This will replace the current certificate once you click Upload.
+                  </div>
                 </div>
               ) : null}
 
               {/* file picker */}
-              <div className="space-y-2">
-                <Label>Select file</Label>
-                <Input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  onChange={(e) => setDeathCertFile(e.target.files?.[0] || null)}
-                />
-                <div className="text-xs text-slate-500">Allowed: JPG, PNG, WEBP, PDF</div>
-              </div>
-
-              {/* ✅ SELECTED file preview (before upload) */}
-              {selectedDeathCertPreviewUrl ? (
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-800">Selected file preview</div>
-
-                  {selectedDeathCertKind === "image" ? (
-                    <div className="rounded-xl border bg-white overflow-hidden">
-                      <img
-                        src={selectedDeathCertPreviewUrl}
-                        alt="Selected death certificate"
-                        className="w-full max-h-[60vh] object-contain"
-                      />
+              <div className="space-y-3">
+                <Label className="text-slate-900 font-medium">
+                  {currentDeathCertUrl ? "Select new file to replace" : "Select file to upload"}
+                </Label>
+                <div
+                  className="relative group cursor-pointer"
+                  onClick={() => document.getElementById('modalFilePick').click()}
+                >
+                  <Input
+                    id="modalFilePick"
+                    type="file"
+                    className="hidden"
+                    accept="image/jpeg,image/png"
+                    onChange={(e) => setDeathCertFile(e.target.files?.[0] || null)}
+                  />
+                  <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-slate-200 bg-white/50 group-hover:bg-white group-hover:border-emerald-400 transition-all">
+                    <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                      <UploadCloud className="h-5 w-5" />
                     </div>
-                  ) : selectedDeathCertKind === "pdf" ? (
-                    <div className="rounded-xl border bg-white overflow-hidden">
-                      <iframe
-                        title="Selected certificate PDF preview"
-                        src={selectedDeathCertPreviewUrl}
-                        className="w-full h-[60vh]"
-                      />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-900 truncate">
+                        {deathCertFile ? deathCertFile.name : "Choose an image..."}
+                      </div>
+                      <div className="text-xs text-slate-500">JPG, JPEG or PNG (Max 5MB)</div>
                     </div>
-                  ) : (
-                    <div className="rounded-xl border bg-white p-3 text-sm text-slate-700">
-                      Preview not available for this file type.
-                    </div>
-                  )}
+                  </div>
                 </div>
-              ) : null}
+              </div>
             </div>
           ) : null}
 

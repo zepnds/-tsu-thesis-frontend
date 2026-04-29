@@ -41,9 +41,8 @@ export default function ProfileModal({ open, onOpenChange }) {
     phone: "",
   });
 
-  // initialize from auth
   // initialize from auth when modal opens
-useEffect(() => {
+  useEffect(() => {
     if (open && user) {
       setForm({
         username: user?.username || "",
@@ -58,8 +57,8 @@ useEffect(() => {
       setEditing(false);
       setMsg({ type: "", text: "" });
     }
-  }, [open]); // only run when modal is toggled
-  
+  }, [open, user]);
+
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -97,17 +96,16 @@ useEffect(() => {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        throw new Error(`Update failed (${res.status})`);
-      }
-
-      // Update localStorage copy if backend returns new user
       const json = await res.json().catch(() => ({}));
 
+      if (!res.ok || json?.status === 'error') {
+        throw new Error(json?.message || `Update failed (${res.status})`);
+      }
+
       let mergedUser;
-      if (json?.data?.user) {
+      if (json?.status === 'success' && json?.data) {
         // Prefer authoritative user from backend
-        mergedUser = json.data.user;
+        mergedUser = json.data;
       } else {
         // Fallback: patch current local user with the edited fields (never store password)
         mergedUser = {
@@ -173,7 +171,6 @@ useEffect(() => {
         {/* Alerts */}
         {msg.text ? (
           <Alert
-            // shadcn has "default" & "destructive". We'll style success using classes.
             variant={msg.type === "error" ? "destructive" : "default"}
             className={
               msg.type === "error"
@@ -181,12 +178,11 @@ useEffect(() => {
                 : "mb-2 border-emerald-200 bg-emerald-50/90 backdrop-blur text-emerald-700 shadow-md"
             }
           >
-            <AlertDescription>{msg.text}</AlertDescription>
+            <AlertDescription className="font-medium">{msg.text}</AlertDescription>
           </Alert>
         ) : null}
 
         <div className="relative p-4 rounded-lg bg-gradient-to-br from-slate-50/50 to-white/50 border border-emerald-100/50 shadow-inner">
-          {/* subtle backdrop gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/5 to-cyan-400/5 rounded-lg pointer-events-none"></div>
 
           <div className="relative grid gap-4">
