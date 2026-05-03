@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 
 import { Toaster, toast } from "sonner";
+import { Combobox } from "../../../components/ui/combobox.jsx";
 
 import CemeteryMap, { CEMETERY_CENTER } from "../../../components/map/CemeteryMap.jsx";
 
@@ -224,6 +225,7 @@ export default function MaintenanceSchedules() {
 
   const [fc, setFc] = useState(null);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [staff, setStaff] = useState([]);
 
   // modals
   const [viewItem, setViewItem] = useState(null);
@@ -291,10 +293,25 @@ export default function MaintenanceSchedules() {
     }
   }, []);
 
+  const fetchStaff = useCallback(async () => {
+    try {
+      const url = `${API_BASE}/admin/users/staff`;
+      const res = await fetch(url, {
+        headers: authHeaders({ Accept: "application/json" }),
+      });
+      const data = await res.json().catch(() => []);
+      setStaff(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("[Admin Staff] fetch error:", e);
+      setStaff([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchList();
     fetchPlotsGeo();
-  }, [fetchList, fetchPlotsGeo]);
+    fetchStaff();
+  }, [fetchList, fetchPlotsGeo, fetchStaff]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -524,6 +541,7 @@ export default function MaintenanceSchedules() {
       {/* Schedule modal */}
       <ScheduleModal
         item={scheduleItem}
+        staff={staff}
         onOpenChange={(o) => !o && setScheduleItem(null)}
         currentUser={currentUser}
         onSaved={async () => {
@@ -645,7 +663,7 @@ function ViewModal({ item, onOpenChange, fc }) {
 }
 
 /* -------------------------- schedule modal -------------------------- */
-function ScheduleModal({ item, onOpenChange, onSaved }) {
+function ScheduleModal({ item, staff = [], onOpenChange, onSaved }) {
   const open = !!item;
   const [saving, setSaving] = useState(false);
 
@@ -736,11 +754,16 @@ function ScheduleModal({ item, onOpenChange, onSaved }) {
           </div>
 
           <div className="space-y-2">
-            <Label>Assigned Staff ID (optional)</Label>
-            <Input
+            <Label>Assigned Staff</Label>
+            <Combobox
+              placeholder="Select staff member..."
+              emptyMessage="No staff found."
+              options={staff.map((s) => ({
+                value: String(s.id),
+                label: `${s.first_name} ${s.last_name} (${s.username})`,
+              }))}
               value={form.assigned_staff_id}
-              onChange={(e) => set("assigned_staff_id", e.target.value)}
-              placeholder="e.g. 2"
+              onValueChange={(v) => set("assigned_staff_id", v)}
             />
           </div>
 

@@ -48,6 +48,13 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
 } from "../../../components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select";
 
 // shadcn sonner toasts
 import { Toaster, toast } from "sonner";
@@ -117,6 +124,7 @@ const fetchUsers = useCallback(async () => {
       last_name: "",
       phone: "",
       address: "",
+      role: "visitor",
       // default active
       is_active_bool: true,
     });
@@ -135,7 +143,7 @@ const fetchUsers = useCallback(async () => {
       last_name: (vals.last_name || "").trim(),
       phone: (vals.phone || "").trim(),
       address: (vals.address || "").trim(),
-      role: "visitor",
+      role: selected?.role || "visitor",
       is_active: 1,
       password_str: genPass(),
     };
@@ -167,7 +175,7 @@ const fetchUsers = useCallback(async () => {
       phone: (vals.phone || selected.phone || "").trim(),
       address: (vals.address || selected.address || "").trim(),
       is_active: vals.is_active_bool === "on" ? 1 : 0,
-      role: "visitor",
+      role: selected?.role || "visitor",
     };
 
     // optional new password
@@ -252,6 +260,7 @@ const fetchUsers = useCallback(async () => {
                   <TableHead className="w-[22%]">Email</TableHead>
                   <TableHead className="w-[16%]">Username</TableHead>
                   <TableHead className="w-[16%]">Password</TableHead>
+                  <TableHead className="w-[10%]">Role</TableHead>
                   <TableHead className="w-[10%]">Active</TableHead>
                   <TableHead className="w-[1%] text-right">Actions</TableHead>
                 </TableRow>
@@ -274,6 +283,9 @@ const fetchUsers = useCallback(async () => {
                       </TableCell>
                       <TableCell>{r.username ?? "—"}</TableCell>
                       <TableCell>{r.password_str ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">{r.role ?? "visitor"}</Badge>
+                      </TableCell>
                       <TableCell>
                         <Badge variant={Number(r.is_active) === 1 ? "success" : "secondary"}>
                           {Number(r.is_active) === 1 ? "Active" : "Inactive"}
@@ -335,6 +347,10 @@ const fetchUsers = useCallback(async () => {
                 <Input value={selected.address ?? "—"} readOnly />
               </div>
               <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Input value={selected.role ?? "visitor"} className="capitalize" readOnly />
+              </div>
+              <div className="space-y-1.5">
                 <Label>Status</Label>
                 <Input value={Number(selected.is_active) === 1 ? "Active" : "Inactive"} readOnly />
               </div>
@@ -385,6 +401,22 @@ const fetchUsers = useCallback(async () => {
                 <Label>Address</Label>
                 <Input name="address" />
               </div>
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Select
+                  value={selected?.role || "visitor"}
+                  onValueChange={(v) => setSelected((s) => ({ ...s, role: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="visitor">Visitor</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter className="gap-2 sm:gap-0">
               <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>
@@ -429,6 +461,22 @@ const fetchUsers = useCallback(async () => {
                 <div className="space-y-1.5">
                   <Label>Address</Label>
                   <Input name="address" defaultValue={selected.address ?? ""} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Role</Label>
+                  <Select
+                    value={selected?.role || "visitor"}
+                    onValueChange={(v) => setSelected((s) => ({ ...s, role: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="visitor">Visitor</SelectItem>
+                      <SelectItem value="staff">Staff</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>New Password (optional)</Label>
