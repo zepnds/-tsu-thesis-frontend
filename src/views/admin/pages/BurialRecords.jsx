@@ -63,6 +63,7 @@ import {
   SelectContent,
   SelectItem,
 } from "../../../components/ui/select";
+import { Combobox } from "../../../components/ui/combobox";
 
 const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
@@ -1359,28 +1360,18 @@ export default function BurialRecords() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Select Plot *</Label>
-                <Select
+                <Combobox
+                  options={allPlots
+                    .filter((p) => p.status === "available" || p.status === null)
+                    .map((p) => ({
+                      value: String(p.id),
+                      label: `${p.plot_name || p.plot_code || `Plot ${p.id}`} (${p.status || "available"})`
+                    }))}
                   value={createDraft.plot_id}
                   onValueChange={(v) => handleCreateDraftChange("plot_id", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={plotsLoading ? "Loading plots..." : "Choose a plot"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allPlots
-                      .filter((p) => p.status === "available" || p.status === null)
-                      .map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          {p.plot_name || p.plot_code || `Plot ${p.id}`} ({p.status || "available"})
-                        </SelectItem>
-                      ))}
-                    {allPlots.filter((p) => p.status === "available" || p.status === null).length === 0 && !plotsLoading && (
-                      <div className="p-2 text-sm text-muted-foreground text-center">
-                        No available plots found
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                  placeholder={plotsLoading ? "Loading plots..." : "Choose a plot"}
+                  emptyMessage="No available plots found"
+                />
               </div>
 
               <div className="space-y-2">
