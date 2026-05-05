@@ -145,7 +145,7 @@ const fetchUsers = useCallback(async () => {
       address: (vals.address || "").trim(),
       role: selected?.role || "visitor",
       is_active: 1,
-      password_str: genPass(),
+      password_str: (vals.password_str || "").trim() || genPass(),
     };
 
     try {
@@ -416,6 +416,10 @@ const fetchUsers = useCallback(async () => {
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Password (optional)</Label>
+                <Input name="password_str" type="password" placeholder="Leave blank to auto-generate" />
               </div>
             </div>
             <DialogFooter className="gap-2 sm:gap-0">
